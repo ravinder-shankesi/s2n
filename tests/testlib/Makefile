@@ -26,7 +26,7 @@ CFLAGS += -I../../ -I../../api/ -I../../libcrypto-root/include/
 LDFLAGS += -L../../lib/ ${CRYPTO_LDFLAGS} -lcrypto -lpthread -ls2n
 
 libtests2n.so: ${OBJS}
-	${CC} ${CFLAGS} -shared ${LDFLAGS} -o libtests2n.so ${OBJS}
+	${CC} -shared ${LDFLAGS} -o libtests2n.so ${OBJS}
 
 libtests2n.dylib: ${OBJS}
 	test ! -f /usr/lib/libSystem.dylib || libtool ${LDFLAGS} -dynamic -o libtests2n.dylib ${OBJS}

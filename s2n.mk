@@ -14,16 +14,16 @@
 #
 
 ifeq ($(PLATFORM),Darwin)
-    LIBS = -lc -lpthread
+	LIBS = -lc
     CRYPTO_LIBS =
 else ifeq ($(PLATFORM),FreeBSD)
-    LIBS = -lthr
+	LIBS =
     CRYPTO_LIBS = -lcrypto
 else ifeq ($(PLATFORM),NetBSD)
-    LIBS = -lpthread
+	LIBS =
     CRYPTO_LIBS = -lcrypto
 else
-    LIBS = -lpthread -ldl -lrt
+    LIBS = -ldl -lrt
     CRYPTO_LIBS = -lcrypto
 endif
 
@@ -31,7 +31,7 @@ SOURCES = $(wildcard *.c *.h)
 CRUFT   = $(wildcard *.c~ *.h~ *.c.BAK *.h.BAK *.o *.a *.so *.dylib)
 INDENT  = $(shell (if indent --version 2>&1 | grep GNU > /dev/null; then echo indent ; elif gindent --version 2>&1 | grep GNU > /dev/null; then echo gindent; else echo true ; fi ))
 
-CFLAGS = -pedantic -Wall -Werror -Wimplicit -Wunused -Wcomment -Wchar-subscripts -Wuninitialized \
+CFLAGS = -pthread -pedantic -Wall -Werror -Wimplicit -Wunused -Wcomment -Wchar-subscripts -Wuninitialized \
          -Wshadow -Wcast-qual -Wcast-align -Wwrite-strings -Wstack-protector -fPIC \
          -std=c99 -D_POSIX_C_SOURCE=200112L -fstack-protector-all -O2 -I../libcrypto-root/include/ \
          -I../api/ -I../ -Wno-deprecated-declarations -Wno-unknown-pragmas -Wformat-security \
