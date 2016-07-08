@@ -28,6 +28,7 @@
 typedef enum {
     CLIENT_HELLO,
     SERVER_HELLO,
+    SERVER_NEW_SESSION_TICKET,
     SERVER_CERT,
     SERVER_CERT_STATUS,
     SERVER_KEY,
@@ -61,17 +62,34 @@ struct s2n_handshake {
         /* A Full handshake with forward secrecy */
         FULL_WITH_PFS,
 
+        /* A full handshake with forward secrecy and new session ticket */
+        FULL_WITH_PFS_WITH_NST,
+
         /* A full handshake with forward secrecy and an OCSP response */
         FULL_WITH_PFS_WITH_STATUS,
+
+        /* A full handshake with forward secrecy, an OCSP responce, and new
+         * session ticket */
+        FULL_WITH_PFS_WITH_STATUS_wITH_NST,
 
         /* A full handshake with no forward secrecy */
         FULL_NO_PFS,
 
+        /* A full hanshake with no forward secrecy and new session ticket */
+        FULL_NO_PFS_WITH_NST,
+
         /* A full handshake with no forward secrecy, but with an OCSP response */
         FULL_NO_PFS_WITH_STATUS,
 
+        /* A full handshake with no forward secrecy, an OCSP responce, and new
+         * session ticket */
+        FULL_NO_PFS_WITH_STATUS_WITH_NST,
+
         /* A resumption handshake */
-        RESUME
+        RESUME,
+
+        /* A resumption handshake and new session ticket */
+        RESUME_WITH_NST
     } handshake_type;
 
     /* Which handshake message number are we processing */

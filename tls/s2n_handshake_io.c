@@ -31,19 +31,20 @@
 #include "utils/s2n_safety.h"
 
 /* From RFC5246 7.4 */
-#define TLS_HELLO_REQUEST       0
-#define TLS_CLIENT_HELLO        1
-#define TLS_SERVER_HELLO        2
-#define TLS_SERVER_CERT         11
-#define TLS_SERVER_KEY          12
-#define TLS_SERVER_CERT_REQ     13
-#define TLS_SERVER_HELLO_DONE   14
-#define TLS_CLIENT_CERT         11  /* Same as SERVER_CERT */
-#define TLS_CLIENT_CERT_VERIFY  15
-#define TLS_CLIENT_KEY          16
-#define TLS_CLIENT_FINISHED     20
-#define TLS_SERVER_FINISHED     20  /* Same as CLIENT_FINISHED */
-#define TLS_SERVER_CERT_STATUS  22
+#define TLS_HELLO_REQUEST              0
+#define TLS_CLIENT_HELLO               1
+#define TLS_SERVER_HELLO               2
+#define TLS_SERVER_NEW_SESSION_TICKET  4
+#define TLS_SERVER_CERT                11
+#define TLS_SERVER_KEY                 12
+#define TLS_SERVER_CERT_REQ            13
+#define TLS_SERVER_HELLO_DONE          14
+#define TLS_CLIENT_CERT                11  /* Same as SERVER_CERT */
+#define TLS_CLIENT_CERT_VERIFY         15
+#define TLS_CLIENT_KEY                 16
+#define TLS_CLIENT_FINISHED            20
+#define TLS_SERVER_FINISHED            20  /* Same as CLIENT_FINISHED */
+#define TLS_SERVER_CERT_STATUS         22
 
 struct s2n_handshake_action {
     uint8_t record_type;
@@ -54,28 +55,29 @@ struct s2n_handshake_action {
 
 /* ... and this is their corresponding handlers, in the same order */
 static struct s2n_handshake_action state_machine[] = {
-    /*Record type   Message type         Writer S2N_SERVER                S2N_CLIENT                   message_type_t               */
-    {TLS_HANDSHAKE, TLS_CLIENT_HELLO,      'C', {s2n_client_hello_recv,    s2n_client_hello_send}},    /* CLIENT_HELLO              */
-    {TLS_HANDSHAKE, TLS_SERVER_HELLO,      'S', {s2n_server_hello_send,    s2n_server_hello_recv}},    /* SERVER_HELLO              */
-    {TLS_HANDSHAKE, TLS_SERVER_CERT,       'S', {s2n_server_cert_send,     s2n_server_cert_recv}},     /* SERVER_CERT               */
-    {TLS_HANDSHAKE, TLS_SERVER_CERT_STATUS,'S', {s2n_server_status_send,   s2n_server_status_recv}},   /* SERVER_CERT_STATUS        */
-    {TLS_HANDSHAKE, TLS_SERVER_KEY,        'S', {s2n_server_key_send,      s2n_server_key_recv}},      /* SERVER_KEY                */
-    {TLS_HANDSHAKE, TLS_SERVER_CERT_REQ,   'S', {NULL,                     NULL}},                     /* SERVER_CERT_REQ           */
-    {TLS_HANDSHAKE, TLS_SERVER_HELLO_DONE, 'S', {s2n_server_done_send,     s2n_server_done_recv}},     /* SERVER_HELLO_DONE         */
-    {TLS_HANDSHAKE, TLS_CLIENT_CERT,       'C', {NULL,                     NULL}},                     /* CLIENT_CERT               */
-    {TLS_HANDSHAKE, TLS_CLIENT_KEY,        'C', {s2n_client_key_recv,      s2n_client_key_send}},      /* CLIENT_KEY                */
-    {TLS_HANDSHAKE, TLS_CLIENT_CERT_VERIFY,'C', {NULL,                     NULL}},                     /* CLIENT_CERT_VERIFY        */
-    {TLS_CHANGE_CIPHER_SPEC, 0,            'C', {s2n_client_ccs_recv,      s2n_client_ccs_send}},      /* CLIENT_CHANGE_CIPHER_SPEC */
-    {TLS_HANDSHAKE, TLS_CLIENT_FINISHED,   'C', {s2n_client_finished_recv, s2n_client_finished_send}}, /* CLIENT_FINISHED           */
-    {TLS_CHANGE_CIPHER_SPEC, 0,            'S', {s2n_server_ccs_send,      s2n_server_ccs_recv}},      /* SERVER_CHANGE_CIPHER_SPEC */
-    {TLS_HANDSHAKE, TLS_SERVER_FINISHED,   'S', {s2n_server_finished_send, s2n_server_finished_recv}}, /* SERVER_FINISHED           */
-    {TLS_APPLICATION_DATA, 0,              'B', {NULL, NULL}}    /* APPLICATION_DATA            */
+    /*Record type   Message type                 Writer     S2N_SERVER                 S2N_CLIENT             message_type_t               */
+    {TLS_HANDSHAKE, TLS_CLIENT_HELLO,             'C', {s2n_client_hello_recv,    s2n_client_hello_send}},    /* CLIENT_HELLO              */
+    {TLS_HANDSHAKE, TLS_SERVER_HELLO,             'S', {s2n_server_hello_send,    s2n_server_hello_recv}},    /* SERVER_HELLO              */
+    {TLS_HANDSHAKE, TLS_SERVER_NEW_SESSION_TICKET,'S', {s2n_server_nst_send,      s2n_server_nst_recv}},      /* SERVER_NEW_SESSION_TICKET */
+    {TLS_HANDSHAKE, TLS_SERVER_CERT,              'S', {s2n_server_cert_send,     s2n_server_cert_recv}},     /* SERVER_CERT               */
+    {TLS_HANDSHAKE, TLS_SERVER_CERT_STATUS,       'S', {s2n_server_status_send,   s2n_server_status_recv}},   /* SERVER_CERT_STATUS        */
+    {TLS_HANDSHAKE, TLS_SERVER_KEY,               'S', {s2n_server_key_send,      s2n_server_key_recv}},      /* SERVER_KEY                */
+    {TLS_HANDSHAKE, TLS_SERVER_CERT_REQ,          'S', {NULL,                     NULL}},                     /* SERVER_CERT_REQ           */
+    {TLS_HANDSHAKE, TLS_SERVER_HELLO_DONE,        'S', {s2n_server_done_send,     s2n_server_done_recv}},     /* SERVER_HELLO_DONE         */
+    {TLS_HANDSHAKE, TLS_CLIENT_CERT,              'C', {NULL,                     NULL}},                     /* CLIENT_CERT               */
+    {TLS_HANDSHAKE, TLS_CLIENT_KEY,               'C', {s2n_client_key_recv,      s2n_client_key_send}},      /* CLIENT_KEY                */
+    {TLS_HANDSHAKE, TLS_CLIENT_CERT_VERIFY,       'C', {NULL,                     NULL}},                     /* CLIENT_CERT_VERIFY        */
+    {TLS_CHANGE_CIPHER_SPEC, 0,                   'C', {s2n_client_ccs_recv,      s2n_client_ccs_send}},      /* CLIENT_CHANGE_CIPHER_SPEC */
+    {TLS_HANDSHAKE, TLS_CLIENT_FINISHED,          'C', {s2n_client_finished_recv, s2n_client_finished_send}}, /* CLIENT_FINISHED           */
+    {TLS_CHANGE_CIPHER_SPEC, 0,                   'S', {s2n_server_ccs_send,      s2n_server_ccs_recv}},      /* SERVER_CHANGE_CIPHER_SPEC */
+    {TLS_HANDSHAKE, TLS_SERVER_FINISHED,          'S', {s2n_server_finished_send, s2n_server_finished_recv}}, /* SERVER_FINISHED           */
+    {TLS_APPLICATION_DATA, 0,                     'B', {NULL, NULL}}    /* APPLICATION_DATA            */
 };
 
-/* We support 5 different ordering of messages, depending on what is being negotiated. There's also a dummy "INITIAL" handshake
+/* We support 10 different ordering of messages, depending on what is being negotiated. There's also a dummy "INITIAL" handshake
  * that everything starts out as until we know better.
  */
-static message_type_t handshakes[6][16] = {
+static message_type_t handshakes[11][16] = {
         /* INITIAL */
         { CLIENT_HELLO, SERVER_HELLO },
 
@@ -84,23 +86,51 @@ static message_type_t handshakes[6][16] = {
           SERVER_HELLO_DONE, CLIENT_KEY, CLIENT_CHANGE_CIPHER_SPEC, CLIENT_FINISHED,
           SERVER_CHANGE_CIPHER_SPEC, SERVER_FINISHED, APPLICATION_DATA },
 
+        /* FULL_WITH_PFS_WITH_NST */
+        { CLIENT_HELLO, SERVER_HELLO, SERVER_CERT, SERVER_KEY,
+          SERVER_HELLO_DONE, CLIENT_KEY, CLIENT_CHANGE_CIPHER_SPEC, CLIENT_FINISHED,
+          SERVER_NEW_SESSION_TICKET, SERVER_CHANGE_CIPHER_SPEC, SERVER_FINISHED,
+          APPLICATION_DATA },
+
         /* FULL_WITH_PFS_WITH_STATUS */
         { CLIENT_HELLO, SERVER_HELLO, SERVER_CERT, SERVER_CERT_STATUS,
           SERVER_KEY, SERVER_HELLO_DONE, CLIENT_KEY, CLIENT_CHANGE_CIPHER_SPEC,
           CLIENT_FINISHED, SERVER_CHANGE_CIPHER_SPEC, SERVER_FINISHED, APPLICATION_DATA },
+
+        /* FULL_WITH_PFS_WITH_STATUS_WITH_NST */
+        { CLIENT_HELLO, SERVER_HELLO, SERVER_CERT, SERVER_CERT_STATUS,
+          SERVER_KEY, SERVER_HELLO_DONE, CLIENT_KEY, CLIENT_CHANGE_CIPHER_SPEC,
+          CLIENT_FINISHED, SERVER_NEW_SESSION_TICKET, SERVER_CHANGE_CIPHER_SPEC,
+          SERVER_FINISHED, APPLICATION_DATA },
 
         /* FULL_NO_PFS */ 
         { CLIENT_HELLO, SERVER_HELLO, SERVER_CERT, SERVER_HELLO_DONE,
           CLIENT_KEY, CLIENT_CHANGE_CIPHER_SPEC, CLIENT_FINISHED,
           SERVER_CHANGE_CIPHER_SPEC, SERVER_FINISHED, APPLICATION_DATA },
 
+        /* FULL_NO_PFS_WITH_NST */
+        { CLIENT_HELLO, SERVER_HELLO, SERVER_CERT, SERVER_HELLO_DONE,
+          CLIENT_KEY, CLIENT_CHANGE_CIPHER_SPEC, CLIENT_FINISHED,
+          SERVER_NEW_SESSION_TICKET, SERVER_CHANGE_CIPHER_SPEC, SERVER_FINISHED,
+          APPLICATION_DATA },
+
         /* FULL_NO_PFS_WITH_STATUS */
         { CLIENT_HELLO, SERVER_HELLO, SERVER_CERT, SERVER_CERT_STATUS,
           SERVER_HELLO_DONE, CLIENT_KEY, CLIENT_CHANGE_CIPHER_SPEC, CLIENT_FINISHED,
           SERVER_CHANGE_CIPHER_SPEC, SERVER_FINISHED, APPLICATION_DATA },
 
+        /* FULL_NO_PFS_WITH_STATUS_WITH_NST */
+        { CLIENT_HELLO, SERVER_HELLO, SERVER_CERT, SERVER_CERT_STATUS,
+          SERVER_HELLO_DONE, CLIENT_KEY, CLIENT_CHANGE_CIPHER_SPEC, CLIENT_FINISHED,
+          SERVER_NEW_SESSION_TICKET, SERVER_CHANGE_CIPHER_SPEC, SERVER_FINISHED,
+          APPLICATION_DATA },
+
         /* RESUME */
         { CLIENT_HELLO, SERVER_HELLO, SERVER_CHANGE_CIPHER_SPEC,
+          SERVER_FINISHED, CLIENT_CHANGE_CIPHER_SPEC, CLIENT_FINISHED, APPLICATION_DATA },
+
+        /* RESUME_WITH_NST */
+        { CLIENT_HELLO, SERVER_HELLO, SERVER_NEW_SESSION_TICKET, SERVER_CHANGE_CIPHER_SPEC,
           SERVER_FINISHED, CLIENT_CHANGE_CIPHER_SPEC, CLIENT_FINISHED, APPLICATION_DATA }
 };
 
