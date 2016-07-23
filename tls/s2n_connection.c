@@ -29,6 +29,7 @@
 #include "tls/s2n_alerts.h"
 #include "tls/s2n_tls.h"
 #include "tls/s2n_prf.h"
+#include "tls/s2n_resume.h"
 
 #include "crypto/s2n_cipher.h"
 
@@ -72,6 +73,7 @@ struct s2n_connection *s2n_connection_new(s2n_mode mode)
     conn->config = &s2n_default_config;
     conn->close_notify_queued = 0;
     conn->session_id_len = 0;
+    conn->session_ticket_status = S2N_NO_TICKET;
 
     /* Allocate the fixed-size stuffers */
     blob.data = conn->alert_in_data;

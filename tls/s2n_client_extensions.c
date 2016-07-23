@@ -20,6 +20,7 @@
 
 #include "tls/s2n_tls_parameters.h"
 #include "tls/s2n_connection.h"
+#include "tls/s2n_resume.h"
 
 #include "stuffer/s2n_stuffer.h"
 
@@ -32,6 +33,7 @@ static int s2n_recv_client_alpn(struct s2n_connection *conn, struct s2n_stuffer 
 static int s2n_recv_client_status_request(struct s2n_connection *conn, struct s2n_stuffer *extension);
 static int s2n_recv_client_elliptic_curves(struct s2n_connection *conn, struct s2n_stuffer *extension);
 static int s2n_recv_client_ec_point_formats(struct s2n_connection *conn, struct s2n_stuffer *extension);
+static int s2n_recv_client_session_ticket_ext(struct s2n_connection *conn, struct s2n_stuffer *extension);
 
 int s2n_client_extensions_send(struct s2n_connection *conn, struct s2n_stuffer *out)
 {
@@ -44,6 +46,7 @@ int s2n_client_extensions_send(struct s2n_connection *conn, struct s2n_stuffer *
 
     uint16_t application_protocols_len = conn->config->application_protocols.size;
     uint16_t server_name_len = strlen(conn->server_name);
+    uint16_t client_ticket_len = conn->client_ticket.size;
 
     if (server_name_len) {
         total_size += 9 + server_name_len;
@@ -53,6 +56,9 @@ int s2n_client_extensions_send(struct s2n_connection *conn, struct s2n_stuffer *
     }
     if (conn->config->status_request_type != S2N_STATUS_REQUEST_NONE) {
         total_size += 9;
+    }
+    if (conn->config->use_tickets) {
+        total_size += 6 + client_ticket_len;
     }
 
     /* Write ECC extensions: Supported Curves and Supported Point Formats */
@@ -106,6 +112,16 @@ int s2n_client_extensions_send(struct s2n_connection *conn, struct s2n_stuffer *
         GUARD(s2n_stuffer_write_uint8(out, (uint8_t)conn->config->status_request_type));
         GUARD(s2n_stuffer_write_uint16(out, 0));
         GUARD(s2n_stuffer_write_uint16(out, 0));
+    }
+
+    if (conn->config->use_tickets) {
+        GUARD(s2n_stuffer_write_uint16(out, TLS_EXTENSION_SESSION_TICKET));
+        GUARD(s2n_stuffer_write_uint16(out, client_ticket_len + 2));
+        GUARD(s2n_stuffer_write_uint16(out, client_ticket_len));
+        /* Did the user set a ticket */
+        if (conn->client_ticket.data != NULL) {
+            GUARD(s2n_stuffer_write(out, &conn->client_ticket));
+        }
     }
 
     /*
@@ -174,6 +190,9 @@ int s2n_client_extensions_recv(struct s2n_connection *conn, struct s2n_blob *ext
             break;
         case TLS_EXTENSION_EC_POINT_FORMATS:
             GUARD(s2n_recv_client_ec_point_formats(conn, &extension));
+            break;
+        case TLS_EXTENSION_SESSION_TICKET:
+            GUARD(s2n_recv_client_session_ticket_ext(conn, &extension));
             break;
        }
     }
@@ -355,5 +374,30 @@ static int s2n_recv_client_ec_point_formats(struct s2n_connection *conn, struct 
      * Only uncompressed points are supported by the server and the client must include it in
      * the extension. Just skip the extension.
      */
+    return 0;
+}
+
+static int s2n_recv_client_session_ticket_ext(struct s2n_connection *conn, struct s2n_stuffer *extension)
+{
+    uint16_t size_of_tick;
+    struct s2n_stuffer *state;
+
+    GUARD(s2n_stuffer_read_uint16(extension, &size_of_tick));
+    if (size_of_tick > s2n_stuffer_data_available(extension)) {
+        /* Malformed length; ignore the extension */
+        return 0;
+    }
+
+    if (conn->config->use_tickets) {
+        if (size_of_tick == 0) {
+            conn->session_ticket_status = S2N_EXPECTING_NEW_TICKET;
+            return 0;
+        }
+
+        if (size_of_tick == S2N_TICKET_SIZE_IN_BYTES) {
+            GUARD(s2n_decrypt_session_ticket(conn, extension, state));
+        }
+    }
+
     return 0;
 }

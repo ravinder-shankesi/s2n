@@ -147,6 +147,18 @@ message_type_t s2n_conn_get_current_message_type(struct s2n_connection *conn)
 
 int s2n_conn_set_handshake_type(struct s2n_connection *conn)
 {
+    if (conn->config->use_tickets) {
+        if (conn->session_ticket_status == S2N_RECEIVED_VALID_TICKET) {
+            conn->handshake.handshake_type = RESUME;
+            return 0;
+        }
+
+        if (conn->session_ticket_status == S2N_RENEW_TICKET) {
+            conn->handshake.handshake_type = RESUME_WITH_NST;
+            return 0;
+        }
+    }
+
     if (s2n_is_caching_enabled(conn->config)) {
         if (!s2n_resume_from_cache(conn)) {
             conn->handshake.handshake_type = RESUME;
@@ -165,15 +177,31 @@ int s2n_conn_set_handshake_type(struct s2n_connection *conn)
     if (conn->secure.cipher_suite->key_exchange_alg->flags & S2N_KEY_EXCHANGE_EPH) {
         conn->handshake.handshake_type = FULL_WITH_PFS;
 
+        if (conn->session_ticket_status == S2N_EXPECTING_NEW_TICKET) {
+            conn->handshake.handshake_type = FULL_WITH_PFS_WITH_NST;
+        }
+
         if (s2n_server_can_send_ocsp(conn)) {
             conn->handshake.handshake_type = FULL_WITH_PFS_WITH_STATUS;
+
+            if (conn->session_ticket_status == S2N_EXPECTING_NEW_TICKET) {
+                conn->handshake.handshake_type = FULL_WITH_PFS_WITH_STATUS_WITH_NST;
+            }
         }
     }
     else {
         conn->handshake.handshake_type = FULL_NO_PFS;
 
+        if (conn->session_ticket_status == S2N_EXPECTING_NEW_TICKET) {
+            conn->handshake.handshake_type = FULL_NO_PFS_WITH_NST;
+        }
+
         if (s2n_server_can_send_ocsp(conn)) {
             conn->handshake.handshake_type = FULL_NO_PFS_WITH_STATUS;
+
+            if (conn->session_ticket_status == S2N_EXPECTING_NEW_TICKET) {
+                conn->handshake.handshake_type = FULL_NO_PFS_WITH_STATUS_WITH_NST;
+            }
         }
     }
 

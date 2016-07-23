@@ -70,7 +70,7 @@ struct s2n_handshake {
 
         /* A full handshake with forward secrecy, an OCSP responce, and new
          * session ticket */
-        FULL_WITH_PFS_WITH_STATUS_wITH_NST,
+        FULL_WITH_PFS_WITH_STATUS_WITH_NST,
 
         /* A full handshake with no forward secrecy */
         FULL_NO_PFS,
