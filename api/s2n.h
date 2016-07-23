@@ -67,6 +67,13 @@ extern int s2n_config_set_protocol_preferences(struct s2n_config *config, const 
 typedef enum { S2N_STATUS_REQUEST_NONE = 0, S2N_STATUS_REQUEST_OCSP = 1 } s2n_status_request_type;
 extern int s2n_config_set_status_request_type(struct s2n_config *config, s2n_status_request_type type);
 
+extern int s2n_config_disable_session_tickets(struct s2n_config *config);
+extern int s2n_config_add_ticket_crypto_key(struct s2n_config *config,
+                                            void *name, uint32_t name_len,
+                                            void *key, uint32_t key_len,
+                                            uint64_t expire_time_in_nanos_since_epoch);
+extern int s2n_config_wipe_expired_ticket_crypto_keys(struct s2n_config *config);
+
 struct s2n_connection;
 typedef enum { S2N_SERVER, S2N_CLIENT } s2n_mode;
 extern struct s2n_connection *s2n_connection_new(s2n_mode mode);
@@ -87,6 +94,9 @@ extern int s2n_set_server_name(struct s2n_connection *conn, const char *server_n
 extern const char *s2n_get_server_name(struct s2n_connection *conn);
 extern const char *s2n_get_application_protocol(struct s2n_connection *conn);
 extern const uint8_t *s2n_connection_get_ocsp_response(struct s2n_connection *conn, uint32_t *length);
+
+extern int s2n_set_session_ticket(struct s2n_connection *conn, const void *session_ticket);
+extern uint64_t s2n_get_ticket_lifetime_hint(struct s2n_connection *conn);
 
 typedef enum { S2N_NOT_BLOCKED = 0, S2N_BLOCKED_ON_READ, S2N_BLOCKED_ON_WRITE } s2n_blocked_status;
 extern int s2n_negotiate(struct s2n_connection *conn, s2n_blocked_status *blocked);
