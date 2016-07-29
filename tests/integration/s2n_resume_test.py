@@ -60,9 +60,16 @@ PROTO_VERS_TO_ARG = {
     ssl.PROTOCOL_TLSv1_2 : "-tls1_2",
 }
 
+def process_cleanup(client, server):
+    client.kill()
+    client.wait()
+    server.kill()
+    server.wait()
+    return 0
+
 def try_resume(endpoint, port, cipher, ssl_version):
     # Fire up s2nd
-    s2nd = subprocess.Popen(["../../bin/s2nd", "-c", "test_all", str(endpoint), str(port)], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    s2nd = subprocess.Popen(["../../bin/s2nd", "--no_sess_tickets", "-c", "test_all", str(endpoint), str(port)], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
     # Make sure it's running
     s2nd.stdout.readline()
@@ -82,6 +89,7 @@ def try_resume(endpoint, port, cipher, ssl_version):
             break
 
     if seperators != 5:
+        process_cleanup(s_client, s2nd)
         return -1
 
     # Write the cipher name towards s2n
@@ -97,6 +105,7 @@ def try_resume(endpoint, port, cipher, ssl_version):
             break
 
     if found == 0:
+        process_cleanup(s_client, s2nd)
         return -1
 
     # Write the cipher name from s2n
@@ -109,13 +118,10 @@ def try_resume(endpoint, port, cipher, ssl_version):
             found = 1
             break
 
+    process_cleanup(s_client, s2nd)
+
     if found == 0:
         return -1
-
-    s_client.kill()
-    s_client.wait()
-    s2nd.kill()
-    s2nd.wait()
 
     return 0
 

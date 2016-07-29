@@ -31,14 +31,14 @@ struct s2n_connection;
 struct s2n_config;
 
 struct s2n_ticket_key {
-    unsigned char key_name[16];
-    uint8_t aes_key[S2N_AES256_KEY_LEN];
-    uint8_t aad[S2N_TLS_GCM_AAD_LEN];
+    unsigned char *key_name;
+    uint8_t *aes_key;
+    uint8_t *aad;
     uint64_t expiration_in_nanos;
 };
 
-extern int s2n_encrypt_session_ticket(struct s2n_connection *conn, struct s2n_stuffer *state, struct s2n_stuffer *to);
-extern int s2n_decrypt_session_ticket(struct s2n_connection *conn, struct s2n_stuffer *from, struct s2n_stuffer *state);
+extern int s2n_encrypt_session_ticket(struct s2n_connection *conn, struct s2n_stuffer *to);
+extern int s2n_decrypt_session_ticket(struct s2n_connection *conn, struct s2n_stuffer *from);
 extern int s2n_verify_unique_ticket_key(struct s2n_config *config, uint8_t *hash);
 
 extern int s2n_is_caching_enabled(struct s2n_config *config);

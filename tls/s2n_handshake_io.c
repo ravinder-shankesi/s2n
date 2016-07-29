@@ -148,9 +148,11 @@ message_type_t s2n_conn_get_current_message_type(struct s2n_connection *conn)
 int s2n_conn_set_handshake_type(struct s2n_connection *conn)
 {
     if (conn->config->use_tickets) {
-        if (conn->session_ticket_status == S2N_RECEIVED_VALID_TICKET) {
-            conn->handshake.handshake_type = RESUME;
-            return 0;
+        if (conn->session_ticket_status == S2N_ATTEMPT_DECRYPT_TICKET) {
+            if (s2n_decrypt_session_ticket(conn, &conn->client_parameters_to_decrypt) == 0) {
+                conn->handshake.handshake_type = RESUME;
+                return 0;
+            }
         }
 
         if (conn->session_ticket_status == S2N_RENEW_TICKET) {

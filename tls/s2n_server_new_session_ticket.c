@@ -39,26 +39,25 @@ int s2n_server_nst_recv(struct s2n_connection *conn)
 
 int s2n_server_nst_send(struct s2n_connection *conn)
 {
+    uint16_t encrypted_length = S2N_TICKET_SIZE_IN_BYTES;
     uint8_t data[S2N_TICKET_SIZE_IN_BYTES];
-    struct s2n_blob entry = { .data = data, .size = S2N_TICKET_SIZE_IN_BYTES };
+    struct s2n_blob entry = { .data = data, .size = sizeof(data) };
     struct s2n_stuffer to;
-    uint64_t lifetime_hint;
+    uint32_t lifetime_hint = (6 * 60 * 60);
 
     if (!conn->config->use_tickets) {
         return -1;
     }
 
-    if (conn->session_ticket_status != S2N_EXPECTING_NEW_TICKET || conn->session_ticket_status != S2N_RENEW_TICKET ) {
+    if (conn->session_ticket_status != S2N_EXPECTING_NEW_TICKET && conn->session_ticket_status != S2N_RENEW_TICKET ) {
         return 0;
     }
 
     GUARD(s2n_stuffer_init(&to, &entry));
+    GUARD(s2n_stuffer_write_uint32(&conn->handshake.io, lifetime_hint));
+    GUARD(s2n_stuffer_write_uint16(&conn->handshake.io, encrypted_length));
 
-    GUARD(conn->config->nanoseconds_since_epoch(conn->config->data_for_nanoseconds_since_epoch, &lifetime_hint));
-    lifetime_hint += S2N_STATE_LIFETIME_IN_NANOS;
-    GUARD(s2n_stuffer_write_uint64(&conn->handshake.io, lifetime_hint));
-
-    GUARD(s2n_encrypt_session_ticket(conn, &to, &to));
+    GUARD(s2n_encrypt_session_ticket(conn, &to));
     GUARD(s2n_stuffer_write(&conn->handshake.io, &to.blob));
 
     return 0;

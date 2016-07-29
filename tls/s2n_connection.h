@@ -36,7 +36,7 @@
 
 #define S2N_TLS_PROTOCOL_VERSION_LEN    2
 
-typedef enum { S2N_NO_TICKET = 0, S2N_EXPECTING_NEW_TICKET = 1, S2N_RENEW_TICKET = 2, S2N_RECEIVED_VALID_TICKET = 3 } s2n_session_ticket_status;
+typedef enum { S2N_NO_TICKET = 0, S2N_EXPECTING_NEW_TICKET = 1, S2N_ATTEMPT_DECRYPT_TICKET = 2, S2N_RENEW_TICKET = 3, S2N_RECEIVED_VALID_TICKET = 4 } s2n_session_ticket_status;
 
 struct s2n_connection {
     /* The configuration (cert, key .. etc ) */
@@ -156,6 +156,7 @@ struct s2n_connection {
     s2n_session_ticket_status session_ticket_status;
     struct s2n_blob client_ticket;
     struct s2n_blob client_ticket_pending;
+    struct s2n_stuffer client_parameters_to_decrypt;
 };
 
 /* Kill a bad connection */

@@ -58,7 +58,7 @@ int s2n_client_extensions_send(struct s2n_connection *conn, struct s2n_stuffer *
         total_size += 9;
     }
     if (conn->config->use_tickets) {
-        total_size += 6 + client_ticket_len;
+        total_size += 4 + client_ticket_len;
     }
 
     /* Write ECC extensions: Supported Curves and Supported Point Formats */
@@ -116,7 +116,6 @@ int s2n_client_extensions_send(struct s2n_connection *conn, struct s2n_stuffer *
 
     if (conn->config->use_tickets) {
         GUARD(s2n_stuffer_write_uint16(out, TLS_EXTENSION_SESSION_TICKET));
-        GUARD(s2n_stuffer_write_uint16(out, client_ticket_len + 2));
         GUARD(s2n_stuffer_write_uint16(out, client_ticket_len));
         /* Did the user set a ticket */
         if (conn->client_ticket.data != NULL) {
@@ -379,24 +378,19 @@ static int s2n_recv_client_ec_point_formats(struct s2n_connection *conn, struct 
 
 static int s2n_recv_client_session_ticket_ext(struct s2n_connection *conn, struct s2n_stuffer *extension)
 {
-    uint16_t size_of_tick;
-    struct s2n_stuffer *state;
-
-    GUARD(s2n_stuffer_read_uint16(extension, &size_of_tick));
-    if (size_of_tick > s2n_stuffer_data_available(extension)) {
-        /* Malformed length; ignore the extension */
+    if (conn->config->use_tickets != 1) {
+        /* Ignore the extension. */
         return 0;
     }
 
-    if (conn->config->use_tickets) {
-        if (size_of_tick == 0) {
-            conn->session_ticket_status = S2N_EXPECTING_NEW_TICKET;
-            return 0;
-        }
+    if (s2n_stuffer_data_available(extension) == 0) {
+        conn->session_ticket_status = S2N_EXPECTING_NEW_TICKET;
+        return 0;
+    }
 
-        if (size_of_tick == S2N_TICKET_SIZE_IN_BYTES) {
-            GUARD(s2n_decrypt_session_ticket(conn, extension, state));
-        }
+    if (extension->blob.size == S2N_TICKET_SIZE_IN_BYTES) {
+        conn->session_ticket_status = S2N_ATTEMPT_DECRYPT_TICKET;
+        conn->client_parameters_to_decrypt = *extension;
     }
 
     return 0;

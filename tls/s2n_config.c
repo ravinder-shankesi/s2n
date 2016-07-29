@@ -509,8 +509,8 @@ int s2n_config_add_ticket_crypto_key(struct s2n_config *config,
     memcpy_check(out_key.data, session_ticket_key.aad, S2N_TLS_GCM_AAD_LEN);
     session_ticket_key.expiration_in_nanos = expire_time_in_nanos_since_epoch;
 
-    config->ticket_keys[config->num_prepped_ticket_keys] = session_ticket_key;
-    config->num_prepped_ticket_keys++;
+    /* config->ticket_keys[config->num_prepped_ticket_keys] = session_ticket_key;
+    config->num_prepped_ticket_keys++; */
 
     return 0;
 }

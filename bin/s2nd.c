@@ -27,6 +27,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <getopt.h>
+#include <time.h>
 
 #include <errno.h>
 
@@ -95,6 +96,7 @@ static char dhparams[] =
 
 #define MAX_KEY_LEN 32
 #define MAX_VAL_LEN 255
+#define KEY_EXPIRATION_IN_NANOS 60000000000
 
 struct session_cache_entry {
     uint8_t key[MAX_KEY_LEN];
@@ -200,6 +202,12 @@ void usage()
     fprintf(stderr, "  -n\n");
     fprintf(stderr, "  --negotiate\n");
     fprintf(stderr, "    Only perform tls handshake and then shutdown the connection\n");
+    fprintf(stderr, "  -a\n");
+    fprintf(stderr, "  --no_sess_cache\n");
+    fprintf(stderr, "    Do not use session caching to resume\n");
+    fprintf(stderr, "  -t\n");
+    fprintf(stderr, "  --no_sess_tickets\n");
+    fprintf(stderr, "    Do not support session tickets for resumption\n");
     fprintf(stderr, "  -h,--help\n");
     fprintf(stderr, "    Display this message and quit.\n");
 
@@ -218,14 +226,18 @@ int main(int argc, char * const *argv)
 
     const char *cipher_prefs = "default";
     int only_negotiate = 0;
+    int session_caching = 1;
+    int session_tickets = 1;
 
     static struct option long_options[] = {
         { "help", no_argument, 0, 'h' },
         { "ciphers", required_argument, 0, 'c' },
+        { "no_sess_cache", no_argument, 0, 'a' },
+        { "no_sess_tickets", no_argument, 0, 't' },
     };
     while (1) {
         int option_index = 0;
-        int c = getopt_long (argc, argv, "c:hn", long_options, &option_index);
+        int c = getopt_long (argc, argv, "c:hatn", long_options, &option_index);
         if (c == -1) {
             break;
         }
@@ -238,6 +250,12 @@ int main(int argc, char * const *argv)
                 break;
             case 'n':
                 only_negotiate = 1;
+                break;
+            case 'a':
+                session_caching = 0;
+                break;
+            case 't':
+                session_tickets = 0;
                 break;
             case '?':
             default:
@@ -330,20 +348,40 @@ int main(int argc, char * const *argv)
         exit(1);
     }
 
-    if (s2n_config_set_cache_store_callback(config, cache_store, session_cache) < 0) {
-        fprintf(stderr, "Error setting cache store callback: '%s'\n", s2n_strerror(s2n_errno, "EN"));
-        exit(1);
+    if (session_tickets) {
+        /* For now: the session ticket key is always the same.
+         * However, there should be a key initialization added here
+         * that calls the s2n_config_add_ticket_crypto_key() function.
+         */
+
+        /* For now: do not allow both session caching and session tickets to be used
+         * (with a bias for session tickets)
+         */
+        session_caching = 0;
+    } else {
+        if (s2n_config_disable_session_tickets(config) < 0) {
+            fprintf(stderr, "Error disabling session tickets: '%s'\n", s2n_strerror(s2n_errno, "EN"));
+            exit(1);
+        }
     }
 
-    if (s2n_config_set_cache_retrieve_callback(config, cache_retrieve, session_cache) < 0) {
-        fprintf(stderr, "Error setting cache retrieve callback: '%s'\n", s2n_strerror(s2n_errno, "EN"));
-        exit(1);
+    if (session_caching) {
+        if (s2n_config_set_cache_store_callback(config, cache_store, session_cache) < 0) {
+            fprintf(stderr, "Error setting cache store callback: '%s'\n", s2n_strerror(s2n_errno, "EN"));
+            exit(1);
+        }
+
+        if (s2n_config_set_cache_retrieve_callback(config, cache_retrieve, session_cache) < 0) {
+            fprintf(stderr, "Error setting cache retrieve callback: '%s'\n", s2n_strerror(s2n_errno, "EN"));
+            exit(1);
+        }
+
+        if (s2n_config_set_cache_delete_callback(config, cache_delete, session_cache) < 0) {
+            fprintf(stderr, "Error setting cache retrieve callback: '%s'\n", s2n_strerror(s2n_errno, "EN"));
+            exit(1);
+        }
     }
 
-    if (s2n_config_set_cache_delete_callback(config, cache_delete, session_cache) < 0) {
-        fprintf(stderr, "Error setting cache retrieve callback: '%s'\n", s2n_strerror(s2n_errno, "EN"));
-        exit(1);
-    }
 
     struct s2n_connection *conn = s2n_connection_new(S2N_SERVER);
     if (!conn) {
