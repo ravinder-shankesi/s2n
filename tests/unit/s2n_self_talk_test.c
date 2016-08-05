@@ -89,12 +89,17 @@ void mock_client(int writefd, int readfd)
 {
     char buffer[0xffff];
     struct s2n_connection *conn;
+    struct s2n_config *cconfig;
     s2n_blocked_status blocked;
 
     /* Give the server a chance to listen */
     sleep(1);
 
     conn = s2n_connection_new(S2N_CLIENT);
+
+    cconfig = s2n_config_new();
+    s2n_config_disable_session_tickets(cconfig);
+    s2n_connection_set_config(conn, cconfig);
 
     s2n_connection_set_read_fd(conn, readfd);
     s2n_connection_set_write_fd(conn, writefd);

@@ -124,12 +124,16 @@ static char dhparams[] =
 
 int main(int argc, char **argv)
 {
+    struct s2n_config *client_config;
     struct s2n_config *server_config;
     struct s2n_cipher_preferences *default_cipher_preferences;
 
     BEGIN_TEST();
 
     EXPECT_SUCCESS(setenv("S2N_ENABLE_CLIENT_MODE", "1", 0));
+
+    EXPECT_NOT_NULL(client_config = s2n_config_new());
+    EXPECT_SUCCESS(s2n_config_disable_session_tickets(client_config));
 
     EXPECT_NOT_NULL(server_config = s2n_config_new());
     EXPECT_SUCCESS(s2n_config_add_cert_chain_and_key(server_config, certificate_chain, private_key));
@@ -165,6 +169,7 @@ int main(int argc, char **argv)
         EXPECT_NOT_NULL(client_conn = s2n_connection_new(S2N_CLIENT));
         EXPECT_SUCCESS(s2n_connection_set_read_fd(client_conn, server_to_client[0]));
         EXPECT_SUCCESS(s2n_connection_set_write_fd(client_conn, client_to_server[1]));
+        EXPECT_SUCCESS(s2n_connection_set_config(client_conn, client_config));
 
         EXPECT_NOT_NULL(server_conn = s2n_connection_new(S2N_SERVER));
         EXPECT_SUCCESS(s2n_connection_set_read_fd(server_conn, client_to_server[0]));

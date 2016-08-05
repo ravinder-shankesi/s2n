@@ -111,6 +111,7 @@ int mock_client(int writefd, int readfd, const char **protocols, int count, cons
     conn = s2n_connection_new(S2N_CLIENT);
     config = s2n_config_new();
     s2n_config_set_protocol_preferences(config, protocols, count);
+    s2n_config_disable_session_tickets(config);
     s2n_connection_set_config(conn, config);
 
     s2n_connection_set_read_fd(conn, readfd);
