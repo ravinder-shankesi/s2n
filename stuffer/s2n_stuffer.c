@@ -17,6 +17,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
+#include <stdio.h>
 
 #include "error/s2n_errno.h"
 
@@ -357,5 +358,25 @@ int s2n_stuffer_copy(struct s2n_stuffer *from, struct s2n_stuffer *to, const uin
 
     memcpy_check(to_ptr, from_ptr, len);
 
+    return 0;
+}
+
+int s2n_stuffer_print_available(struct s2n_stuffer *stuffer)
+{
+    uint8_t temp;
+    uint32_t init_curs = stuffer->read_cursor;
+    int counter = 0;
+
+    while(s2n_stuffer_data_available(stuffer) > 0) {
+        GUARD(s2n_stuffer_read_uint8(stuffer, &temp));
+        printf(" %x", temp);
+        counter++;
+        if (counter % 10 == 0) {
+            printf("\n");
+        }
+    }
+
+    printf("\n%d bytes shown\n", counter);
+    stuffer->read_cursor = init_curs;
     return 0;
 }
