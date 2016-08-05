@@ -23,17 +23,18 @@
 #define S2N_STATE_LIFETIME_IN_NANOS     21600000000
 #define S2N_STATE_SIZE_IN_BYTES         (1 + 8 + 1 + S2N_TLS_CIPHER_SUITE_LEN + S2N_TLS_SECRET_LEN)
 #define S2N_TLS_SESSION_CACHE_TTL       (6 * 60 * 60)
-#define S2N_TLS_GCM_AAD_LEN        13
-#define S2N_AES256_KEY_LEN         32
-#define S2N_TICKET_SIZE_IN_BYTES  (16 + S2N_TLS_GCM_IV_LEN + S2N_STATE_SIZE_IN_BYTES + S2N_TLS_GCM_TAG_LEN)
+#define S2N_TICKET_KEY_NAME_LEN         16
+#define S2N_TLS_GCM_AAD_LEN             13
+#define S2N_AES256_KEY_LEN              32
+#define S2N_TICKET_SIZE_IN_BYTES        (S2N_TICKET_KEY_NAME_LEN + S2N_TLS_GCM_IV_LEN + S2N_STATE_SIZE_IN_BYTES + S2N_TLS_GCM_TAG_LEN)
 
 struct s2n_connection;
 struct s2n_config;
 
 struct s2n_ticket_key {
-    unsigned char *key_name;
-    uint8_t *aes_key;
-    uint8_t *aad;
+    unsigned char key_name[S2N_TICKET_KEY_NAME_LEN]; /* name = "YYYY.MM.DD.HH\0" */
+    uint8_t aes_key[S2N_AES256_KEY_LEN];
+    uint8_t aad[S2N_TLS_GCM_AAD_LEN];
     uint64_t expiration_in_nanos;
 };
 

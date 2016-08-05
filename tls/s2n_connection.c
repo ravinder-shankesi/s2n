@@ -90,6 +90,12 @@ struct s2n_connection *s2n_connection_new(s2n_mode mode)
     blob.size = S2N_ALERT_LENGTH;
 
     GUARD_PTR(s2n_stuffer_init(&conn->writer_alert_out, &blob));
+
+    blob.data = conn->tick_ext_data;
+    blob.size = S2N_TICKET_SIZE_IN_BYTES;
+
+    GUARD_PTR(s2n_stuffer_init(&conn->client_tick_to_decrypt, &blob));
+
     GUARD_PTR(s2n_stuffer_alloc(&conn->out, S2N_LARGE_RECORD_LENGTH));
 
     /* Initialize the growable stuffers. Zero length at first, but the resize
@@ -161,6 +167,7 @@ int s2n_connection_wipe(struct s2n_connection *conn)
     struct s2n_stuffer alert_in;
     struct s2n_stuffer reader_alert_out;
     struct s2n_stuffer writer_alert_out;
+    struct s2n_stuffer client_tick_to_decrypt;
     struct s2n_stuffer handshake_io;
     struct s2n_stuffer header_in;
     struct s2n_stuffer in;
@@ -171,6 +178,7 @@ int s2n_connection_wipe(struct s2n_connection *conn)
     GUARD(s2n_stuffer_wipe(&conn->alert_in));
     GUARD(s2n_stuffer_wipe(&conn->reader_alert_out));
     GUARD(s2n_stuffer_wipe(&conn->writer_alert_out));
+    GUARD(s2n_stuffer_wipe(&conn->client_tick_to_decrypt));
     GUARD(s2n_stuffer_wipe(&conn->handshake.io));
     GUARD(s2n_stuffer_wipe(&conn->header_in));
     GUARD(s2n_stuffer_wipe(&conn->in));
@@ -192,6 +200,7 @@ int s2n_connection_wipe(struct s2n_connection *conn)
     memcpy_check(&alert_in, &conn->alert_in, sizeof(struct s2n_stuffer));
     memcpy_check(&reader_alert_out, &conn->reader_alert_out, sizeof(struct s2n_stuffer));
     memcpy_check(&writer_alert_out, &conn->writer_alert_out, sizeof(struct s2n_stuffer));
+    memcpy_check(&client_tick_to_decrypt, &conn->client_tick_to_decrypt, sizeof(struct s2n_stuffer));
     memcpy_check(&handshake_io, &conn->handshake.io, sizeof(struct s2n_stuffer));
     memcpy_check(&header_in, &conn->header_in, sizeof(struct s2n_stuffer));
     memcpy_check(&in, &conn->in, sizeof(struct s2n_stuffer));
@@ -225,6 +234,7 @@ int s2n_connection_wipe(struct s2n_connection *conn)
     memcpy_check(&conn->alert_in, &alert_in, sizeof(struct s2n_stuffer));
     memcpy_check(&conn->reader_alert_out, &reader_alert_out, sizeof(struct s2n_stuffer));
     memcpy_check(&conn->writer_alert_out, &writer_alert_out, sizeof(struct s2n_stuffer));
+    memcpy_check(&conn->client_tick_to_decrypt, &client_tick_to_decrypt, sizeof(struct s2n_stuffer));
     memcpy_check(&conn->handshake.io, &handshake_io, sizeof(struct s2n_stuffer));
     memcpy_check(&conn->header_in, &header_in, sizeof(struct s2n_stuffer));
     memcpy_check(&conn->in, &in, sizeof(struct s2n_stuffer));

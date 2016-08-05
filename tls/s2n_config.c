@@ -475,50 +475,64 @@ int s2n_config_disable_session_tickets(struct s2n_config *config)
 }
 
 int s2n_config_add_ticket_crypto_key(struct s2n_config *config,
-                                     void *name, uint32_t name_len,
+                                     const void *name, uint32_t name_len,
                                      void *key, uint32_t key_len,
-                                     uint64_t expire_time_in_nanos_since_epoch)
+                                     uint64_t expire_time_in_nanos)
 {
     if (config->num_prepped_ticket_keys >= S2N_MAX_TICKET_KEYS) {
         return -1;
     }
 
-    uint8_t output_pad[32 + S2N_TLS_GCM_AAD_LEN];
+    uint8_t output_pad[S2N_AES256_KEY_LEN + S2N_TLS_GCM_AAD_LEN];
     struct s2n_blob out_key = { .data = output_pad, .size = sizeof(output_pad) };
     struct s2n_blob in_key = { .data = key, .size = key_len };
     struct s2n_blob salt = { .size = 0 };
     struct s2n_blob info = { .size = 0 };
 
-    struct s2n_hash_state hash;
-    uint8_t hash_output[SHA_DIGEST_LENGTH];
+    /* struct s2n_hash_state hash;
+     * uint8_t hash_output[SHA_DIGEST_LENGTH];
+     */
 
-    struct s2n_ticket_key session_ticket_key;
+    struct s2n_blob allocator;
+    struct s2n_ticket_key *session_ticket_key;
+
+    GUARD(s2n_alloc(&allocator, sizeof(struct s2n_ticket_key)));
+
+    session_ticket_key = (struct s2n_ticket_key *)(void *)allocator.data;
 
     GUARD(s2n_hkdf(S2N_HMAC_SHA256, &in_key, &salt, &info, &out_key));
 
-    GUARD(s2n_hash_init(&hash, S2N_HASH_SHA1));
-    GUARD(s2n_hash_update(&hash, out_key.data, out_key.size));
-    GUARD(s2n_hash_digest(&hash, hash_output, SHA_DIGEST_LENGTH));
-    GUARD(s2n_verify_unique_ticket_key(config, hash_output));
-    /* config->ticket_key_hashes[config->total_used_ticket_keys] = hash_output; */
-    /* sort (qsort, insertion sort, or add in sorted order) the array of hashes */
-    config->total_used_ticket_keys = (config->total_used_ticket_keys + 1) % S2N_MAX_TICKET_KEY_HASHES;
+    /* HASH THE KEY AND STORE THE HASH IN ORDER TO CHECK THAT A
+     * NEW KEY IS UNIQUE.
+     *
+     * GUARD(s2n_hash_init(&hash, S2N_HASH_SHA1));
+     * GUARD(s2n_hash_update(&hash, out_key.data, out_key.size));
+     * GUARD(s2n_hash_digest(&hash, hash_output, SHA_DIGEST_LENGTH));
+     * GUARD(s2n_verify_unique_ticket_key(config, hash_output));
+     * config->ticket_key_hashes[config->total_used_ticket_keys] = hash_output;
+     *
+     * SORT (qsort, insertion sort, or add in sorted order)
+     * We are adding one key at a time, so the array is "nearly sorted" (only
+     * one hash out of place).
+     *
+     * config->total_used_ticket_keys = (config->total_used_ticket_keys + 1) % S2N_MAX_TICKET_KEY_HASHES;
+     */
 
-    memcpy_check(name, session_ticket_key.key_name, 16);
-    memcpy_check(out_key.data, session_ticket_key.aes_key, S2N_AES256_KEY_LEN);
-    memcpy_check(out_key.data, session_ticket_key.aad, S2N_TLS_GCM_AAD_LEN);
-    session_ticket_key.expiration_in_nanos = expire_time_in_nanos_since_epoch;
+    memcpy_check(session_ticket_key->key_name, name, 16);
+    memcpy_check(session_ticket_key->aes_key, out_key.data, S2N_AES256_KEY_LEN);
+    out_key.data = output_pad + S2N_AES256_KEY_LEN;
+    memcpy_check(session_ticket_key->aad, out_key.data, S2N_TLS_GCM_AAD_LEN);
+    /* We do not check for expiration yet.
+     * session_ticket_key.expiration = expire_time;
+     */
 
-    /* config->ticket_keys[config->num_prepped_ticket_keys] = session_ticket_key;
-    config->num_prepped_ticket_keys++; */
+    config->ticket_keys[config->num_prepped_ticket_keys] = *session_ticket_key;
+    config->num_prepped_ticket_keys++;
 
     return 0;
 }
 
 int s2n_config_wipe_expired_ticket_crypto_keys(struct s2n_config *config)
 {
-    /* search through the array in reverse to remove expired keys;
-     * stop at index=47 because those are valid keys
-     */
     return 0;
 }

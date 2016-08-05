@@ -202,10 +202,8 @@ void usage()
     fprintf(stderr, "  -n\n");
     fprintf(stderr, "  --negotiate\n");
     fprintf(stderr, "    Only perform tls handshake and then shutdown the connection\n");
-    fprintf(stderr, "  -a\n");
     fprintf(stderr, "  --no_sess_cache\n");
     fprintf(stderr, "    Do not use session caching to resume\n");
-    fprintf(stderr, "  -t\n");
     fprintf(stderr, "  --no_sess_tickets\n");
     fprintf(stderr, "    Do not support session tickets for resumption\n");
     fprintf(stderr, "  -h,--help\n");
@@ -232,12 +230,12 @@ int main(int argc, char * const *argv)
     static struct option long_options[] = {
         { "help", no_argument, 0, 'h' },
         { "ciphers", required_argument, 0, 'c' },
-        { "no_sess_cache", no_argument, 0, 'a' },
+        { "no_sess_cache", no_argument, 0, 's' },
         { "no_sess_tickets", no_argument, 0, 't' },
     };
     while (1) {
         int option_index = 0;
-        int c = getopt_long (argc, argv, "c:hatn", long_options, &option_index);
+        int c = getopt_long (argc, argv, "c:hstn", long_options, &option_index);
         if (c == -1) {
             break;
         }
@@ -251,7 +249,7 @@ int main(int argc, char * const *argv)
             case 'n':
                 only_negotiate = 1;
                 break;
-            case 'a':
+            case 's':
                 session_caching = 0;
                 break;
             case 't':
@@ -349,15 +347,18 @@ int main(int argc, char * const *argv)
     }
 
     if (session_tickets) {
-        /* For now: the session ticket key is always the same.
-         * However, there should be a key initialization added here
-         * that calls the s2n_config_add_ticket_crypto_key() function.
-         */
+        /* Key initialization */
+        const unsigned char tick_key_name[16] = "2016.07.26.15\0";
+        uint8_t tick_key[32] = {0x07, 0x77, 0x09, 0x36, 0x2c, 0x2e, 0x32, 0xdf, 0x0d, 0xdc,
+                0x3f, 0x0d, 0xc4, 0x7b, 0xba, 0x63, 0x90, 0xb6, 0xc7, 0x3b,
+                0xb5, 0x0f, 0x9c, 0x31, 0x22, 0xec, 0x84, 0x4a, 0xd7, 0xc2,
+                0xb3, 0xe5 };
+        uint64_t expire_time = KEY_EXPIRATION_IN_NANOS;
 
-        /* For now: do not allow both session caching and session tickets to be used
-         * (with a bias for session tickets)
-         */
-        session_caching = 0;
+        if (s2n_config_add_ticket_crypto_key(config, tick_key_name, sizeof(tick_key_name), tick_key, sizeof(tick_key), expire_time) != 0) {
+            fprintf(stderr, "Error adding ticket key: '%s'\n", s2n_strerror(s2n_errno, "EN"));
+            exit(1);
+        }
     } else {
         if (s2n_config_disable_session_tickets(config) < 0) {
             fprintf(stderr, "Error disabling session tickets: '%s'\n", s2n_strerror(s2n_errno, "EN"));

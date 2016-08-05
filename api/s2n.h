@@ -69,7 +69,7 @@ extern int s2n_config_set_status_request_type(struct s2n_config *config, s2n_sta
 
 extern int s2n_config_disable_session_tickets(struct s2n_config *config);
 extern int s2n_config_add_ticket_crypto_key(struct s2n_config *config,
-                                            void *name, uint32_t name_len,
+                                            const void *name, uint32_t name_len,
                                             void *key, uint32_t key_len,
                                             uint64_t expire_time_in_nanos_since_epoch);
 extern int s2n_config_wipe_expired_ticket_crypto_keys(struct s2n_config *config);

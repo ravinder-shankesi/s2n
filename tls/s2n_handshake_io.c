@@ -147,17 +147,24 @@ message_type_t s2n_conn_get_current_message_type(struct s2n_connection *conn)
 
 int s2n_conn_set_handshake_type(struct s2n_connection *conn)
 {
+    /* First we attempt to resume with session tickets, then we fallback
+     * to attempting to resume with session caching (if enabled).
+     */
     if (conn->config->use_tickets) {
         if (conn->session_ticket_status == S2N_ATTEMPT_DECRYPT_TICKET) {
-            if (s2n_decrypt_session_ticket(conn, &conn->client_parameters_to_decrypt) == 0) {
+            /* If the ticket is found to be expired during decryption, then
+             * the session ticket 'status' will be updated to reflect that
+             * the ticket must be renewed (S2N_RENEW_TICKET).
+             */
+            if (s2n_decrypt_session_ticket(conn, &conn->client_tick_to_decrypt) == 0) {
                 conn->handshake.handshake_type = RESUME;
+
+                if (conn->session_ticket_status == S2N_RENEW_TICKET) {
+                    conn->handshake.handshake_type = RESUME_WITH_NST;
+                }
+
                 return 0;
             }
-        }
-
-        if (conn->session_ticket_status == S2N_RENEW_TICKET) {
-            conn->handshake.handshake_type = RESUME_WITH_NST;
-            return 0;
         }
     }
 

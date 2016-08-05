@@ -145,97 +145,72 @@ int s2n_store_to_cache(struct s2n_connection *conn)
     return 0;
 }
 
-int s2n_get_valid_ticket_key(struct s2n_config *config, struct s2n_ticket_key *key)
+/* This function is used in s2n_encrypt_session_ticket in order for s2n to
+ * choose a valid encryption key from all of the keys added to config
+ */
+struct s2n_ticket_key *s2n_get_valid_ticket_key(struct s2n_config *config)
 {
+    /* Currently, the first key is returned and assumed to be valid.
+     * In the future, this function may choose between multiple valid keys,
+     * which would allow s2n to phase keys in and out linearly.
+     */
     if (config->num_prepped_ticket_keys > 0) {
-        key = &config->ticket_keys[0];
-        return 0;
+        return &config->ticket_keys[0];
     }
-    key = NULL;
-    return 0;
+
+    /* No valid keys added */
+    return NULL;
 }
 
-int s2n_find_ticket_key(struct s2n_config *config, uint8_t name[16], struct s2n_ticket_key *key)
+/* This function is used in s2n_decrypt_session_ticket in order for s2n to
+ * find the matching key that was used for encryption.
+ */
+struct s2n_ticket_key *s2n_find_ticket_key(struct s2n_config *config, uint8_t name[16])
 {
     for (int i = 0; i < config->num_prepped_ticket_keys; i++) {
         if (memcmp(config->ticket_keys[i].key_name, name, 16) == 0) {
-            key = &config->ticket_keys[i];
-            return 0;
+            return &config->ticket_keys[i];
         }
     }
 
     /* Could not find key with that name */
-    key = NULL;
-    return 0;
-}
-
-int print_stuffer(struct s2n_stuffer *state)
-{
-    uint8_t temp;
-    int counter = 0;
-    while(s2n_stuffer_data_available(state) > 0) {
-        GUARD(s2n_stuffer_read_uint8(state, &temp));
-        printf(" %x", temp);
-        counter++;
-    }
-    printf("\n");
-    printf("%d\n", counter);
-    return 0;
+    return NULL;
 }
 
 int s2n_encrypt_session_ticket(struct s2n_connection *conn, struct s2n_stuffer *to)
 {
-    struct s2n_ticket_key key;
+    struct s2n_ticket_key *key = NULL;
     struct s2n_session_key aes_ticket_key;
     struct s2n_blob aes_key_blob, aad_blob;
 
     uint8_t iv_data[S2N_TLS_GCM_IV_LEN] = { 0 };
     struct s2n_blob iv = { .data = iv_data, .size = sizeof(iv_data) };
 
-    uint8_t s_data[S2N_STATE_SIZE_IN_BYTES + S2N_TLS_GCM_EXPLICIT_IV_LEN + S2N_TLS_GCM_TAG_LEN] = { 0 };
+    uint8_t s_data[S2N_STATE_SIZE_IN_BYTES + S2N_TLS_GCM_TAG_LEN] = { 0 };
     struct s2n_blob state_blob = { .data = s_data, .size = sizeof(s_data) };
     struct s2n_stuffer state;
 
-    uint8_t encrypted_len = S2N_STATE_SIZE_IN_BYTES + S2N_TLS_GCM_TAG_LEN;
+    key = s2n_get_valid_ticket_key(conn->config);
+    if (!key) {
+        /* No keys loaded by the user; add an s2n error? */
+        return -1;
+    }
 
-    /* GUARD(s2n_get_valid_ticket_key(conn->config, key));
-     * if (!key) {
-     *     // No keys loaded by the user
-     *     return -1;
-     * }
-     */
-
-    /* Initialize the ticket key */
-    unsigned char tick_key_name[16] = "2016.07.26\0";
-    uint8_t tick_key[S2N_AES256_KEY_LEN] = {0x07, 0x77, 0x09, 0x36, 0x2c, 0x2e, 0x32, 0xdf, 0x0d, 0xdc,
-            0x3f, 0x0d, 0xc4, 0x7b, 0xba, 0x63, 0x90, 0xb6, 0xc7, 0x3b,
-            0xb5, 0x0f, 0x9c, 0x31, 0x22, 0xec, 0x84, 0x4a, 0xd7, 0xc2,
-            0xb3, 0xe5 };
-    uint8_t aad_key[S2N_TLS_GCM_AAD_LEN] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c };
-
-    key.key_name = tick_key_name;
-    key.aes_key = tick_key;
-    key.aad = aad_key;
-
-    GUARD(s2n_stuffer_write_bytes(to, key.key_name, 16));
+    GUARD(s2n_stuffer_write_bytes(to, key->key_name, S2N_TICKET_KEY_NAME_LEN));
 
     GUARD(s2n_get_public_random_data(&iv));
     GUARD(s2n_stuffer_write(to, &iv));
 
-    s2n_blob_init(&aes_key_blob, key.aes_key, S2N_AES256_KEY_LEN);
+    s2n_blob_init(&aes_key_blob, key->aes_key, S2N_AES256_KEY_LEN);
     GUARD(s2n_aes256_gcm.init(&aes_ticket_key));
     GUARD(s2n_aes256_gcm.get_encryption_key(&aes_ticket_key, &aes_key_blob));
 
-    s2n_blob_init(&aad_blob, key.aad, S2N_TLS_GCM_AAD_LEN);
+    s2n_blob_init(&aad_blob, key->aad, S2N_TLS_GCM_AAD_LEN);
 
     GUARD(s2n_stuffer_init(&state, &state_blob));
-    GUARD(s2n_stuffer_skip_write(&state, S2N_TLS_GCM_EXPLICIT_IV_LEN));
     GUARD(s2n_serialize_resumption_state(conn, &state));
 
     GUARD(s2n_aes256_gcm.io.aead.encrypt(&aes_ticket_key, &iv, &aad_blob, &state_blob, &state_blob));
-
-    state_blob.data = s_data + S2N_TLS_GCM_EXPLICIT_IV_LEN;
-    state_blob.size = encrypted_len;
 
     GUARD(s2n_stuffer_write(to, &state_blob));
 
@@ -244,11 +219,11 @@ int s2n_encrypt_session_ticket(struct s2n_connection *conn, struct s2n_stuffer *
 
 int s2n_decrypt_session_ticket(struct s2n_connection *conn, struct s2n_stuffer *from)
 {
-    struct s2n_ticket_key key;
+    struct s2n_ticket_key *key = NULL;
     struct s2n_session_key aes_ticket_key;
     struct s2n_blob aes_key_blob, aad_blob;
 
-    uint8_t key_name[16];
+    uint8_t key_name[S2N_TICKET_KEY_NAME_LEN];
 
     uint8_t iv_data[S2N_TLS_GCM_IV_LEN] = { 0 };
     struct s2n_blob iv = { .data = iv_data, .size = sizeof(iv_data) };
@@ -257,50 +232,32 @@ int s2n_decrypt_session_ticket(struct s2n_connection *conn, struct s2n_stuffer *
     struct s2n_blob state_blob = { .data = s_data, .size = sizeof(s_data) };
     struct s2n_stuffer state;
 
-    uint8_t en_data[S2N_TLS_GCM_EXPLICIT_IV_LEN + S2N_STATE_SIZE_IN_BYTES + S2N_TLS_GCM_TAG_LEN];
+    uint8_t en_data[S2N_STATE_SIZE_IN_BYTES + S2N_TLS_GCM_TAG_LEN];
     struct s2n_blob en_blob = { .data = en_data, .size = sizeof(en_data) };
 
-    GUARD(s2n_stuffer_read_bytes(from, key_name, 16));
+    GUARD(s2n_stuffer_read_bytes(from, key_name, S2N_TICKET_KEY_NAME_LEN));
 
-    /* GUARD(s2n_find_ticket_key(conn->config, key_name, key));
-     * if (!key) {
-     *     // Key no longer valid; do full handshake with NST
-     *     conn->session_ticket_status = S2N_EXPECTING_NEW_TICKET;
-     *     return 0;
-     * }
-     */
-
-    /* Initialize the ticket key (same as encryption) */
-    unsigned char tick_key_name[16] = "2016.07.26\0";
-    uint8_t tick_key[S2N_AES256_KEY_LEN] = {0x07, 0x77, 0x09, 0x36, 0x2c, 0x2e, 0x32, 0xdf, 0x0d, 0xdc,
-            0x3f, 0x0d, 0xc4, 0x7b, 0xba, 0x63, 0x90, 0xb6, 0xc7, 0x3b,
-            0xb5, 0x0f, 0x9c, 0x31, 0x22, 0xec, 0x84, 0x4a, 0xd7, 0xc2,
-            0xb3, 0xe5 };
-    uint8_t aad_key[S2N_TLS_GCM_AAD_LEN] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c };
-
-    key.key_name = tick_key_name;
-    key.aes_key = tick_key;
-    key.aad = aad_key;
+    key = s2n_find_ticket_key(conn->config, key_name);
+    if (!key) {
+        /* Key no longer valid; do full handshake with NST */
+        conn->session_ticket_status = S2N_EXPECTING_NEW_TICKET;
+        return 0;
+    }
 
     GUARD(s2n_stuffer_read(from, &iv));
 
-    s2n_blob_init(&aes_key_blob, key.aes_key, S2N_AES256_KEY_LEN);
+    s2n_blob_init(&aes_key_blob, key->aes_key, S2N_AES256_KEY_LEN);
     GUARD(s2n_aes256_gcm.init(&aes_ticket_key));
     GUARD(s2n_aes256_gcm.get_decryption_key(&aes_ticket_key, &aes_key_blob));
 
-    s2n_blob_init(&aad_blob, key.aad, S2N_TLS_GCM_AAD_LEN);
+    s2n_blob_init(&aad_blob, key->aad, S2N_TLS_GCM_AAD_LEN);
 
-    GUARD(s2n_stuffer_init(&state, &state_blob));
-
-    GUARD(s2n_stuffer_reread(from));
-    GUARD(s2n_stuffer_skip_read(from, 16 + S2N_TLS_GCM_FIXED_IV_LEN));
     GUARD(s2n_stuffer_read(from, &en_blob));
 
     GUARD(s2n_aes256_gcm.io.aead.decrypt(&aes_ticket_key, &iv, &aad_blob, &en_blob, &en_blob));
 
-    en_blob.data = en_data + S2N_TLS_GCM_EXPLICIT_IV_LEN;
-    en_blob.size = S2N_STATE_SIZE_IN_BYTES;
-    GUARD(s2n_stuffer_write(&state, &en_blob));
+    GUARD(s2n_stuffer_init(&state, &state_blob));
+    GUARD(s2n_stuffer_write_bytes(&state, en_data, S2N_STATE_SIZE_IN_BYTES));
 
     GUARD(s2n_deserialize_resumption_state(conn, &state));
 
@@ -308,8 +265,7 @@ int s2n_decrypt_session_ticket(struct s2n_connection *conn, struct s2n_stuffer *
      * yourself of lifetime.
      */
 
-    /*
-     * Check expire time from key to see if a new key needs to be assigned to
+    /* Check expire time from key to see if a new key needs to be assigned to
      * this ticket.
      */
 
