@@ -96,6 +96,9 @@ void mock_client(int writefd, int readfd)
     sleep(1);
 
     conn = s2n_connection_new(S2N_CLIENT);
+    conn->server_protocol_version = S2N_TLS12;
+    conn->client_protocol_version = S2N_TLS12;
+    conn->actual_protocol_version = S2N_TLS12;
 
     cconfig = s2n_config_new();
     s2n_config_disable_session_tickets(cconfig);
@@ -165,6 +168,10 @@ int main(int argc, char **argv)
         EXPECT_SUCCESS(close(server_to_client[0]));
 
         EXPECT_NOT_NULL(conn = s2n_connection_new(S2N_SERVER));
+        conn->server_protocol_version = S2N_TLS12;
+        conn->client_protocol_version = S2N_TLS12;
+        conn->actual_protocol_version = S2N_TLS12;
+
         EXPECT_NOT_NULL(config = s2n_config_new());
 
         EXPECT_SUCCESS(s2n_config_add_cert_chain_and_key(config, certificate, private_key));
@@ -184,10 +191,10 @@ int main(int argc, char **argv)
         char buffer[0xffff];
         for (int i = 1; i < 0xffff; i += 100) {
             char * ptr = buffer;
-            int bytes_read = 0;
             int size = i;
 
             do {
+                int bytes_read = 0;
                 EXPECT_SUCCESS(bytes_read = s2n_recv(conn, ptr, size, &blocked));
 
                 size -= bytes_read;

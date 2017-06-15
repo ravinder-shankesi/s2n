@@ -172,7 +172,7 @@ int s2n_prf_master_secret(struct s2n_connection *conn, struct s2n_blob *premaste
     return s2n_prf(conn, premaster_secret, &label, &client_random, &server_random, &master_secret);
 }
 
-static int s2n_sslv3_finished(struct s2n_connection *conn, uint8_t prefix[4], struct s2n_hash_state *md5, struct s2n_hash_state *sha1, uint8_t *out)
+static int s2n_sslv3_finished(struct s2n_connection *conn, uint8_t prefix[4], struct s2n_hash_state *md5, struct s2n_hash_state *sha1, uint8_t * out)
 {
     uint8_t xorpad1[48] =
         { 0x36, 0x36, 0x36, 0x36, 0x36, 0x36, 0x36, 0x36, 0x36, 0x36, 0x36, 0x36, 0x36, 0x36, 0x36, 0x36, 0x36, 0x36, 0x36, 0x36, 0x36, 0x36, 0x36, 0x36, 0x36, 0x36, 0x36, 0x36,
@@ -255,21 +255,21 @@ int s2n_prf_client_finished(struct s2n_connection *conn)
     master_secret.data = conn->secure.master_secret;
     master_secret.size = sizeof(conn->secure.master_secret);
     if (conn->actual_protocol_version == S2N_TLS12) {
-        switch(conn->secure.cipher_suite->tls12_prf_alg) {
+        switch (conn->secure.cipher_suite->tls12_prf_alg) {
             struct s2n_hash_state hash_state;
 
-            case S2N_HMAC_SHA256:
-                GUARD(s2n_hash_copy(&hash_state, &conn->handshake.sha256));
-                GUARD(s2n_hash_digest(&hash_state, sha_digest, SHA256_DIGEST_LENGTH));
-                sha.size = SHA256_DIGEST_LENGTH;
-                break;
-            case S2N_HMAC_SHA384:
-                GUARD(s2n_hash_copy(&hash_state, &conn->handshake.sha384));
-                GUARD(s2n_hash_digest(&hash_state, sha_digest, SHA384_DIGEST_LENGTH));
-                sha.size = SHA384_DIGEST_LENGTH;
-                break;
-            default:
-                S2N_ERROR(S2N_ERR_PRF_INVALID_ALGORITHM);
+        case S2N_HMAC_SHA256:
+            GUARD(s2n_hash_copy(&hash_state, &conn->handshake.sha256));
+            GUARD(s2n_hash_digest(&hash_state, sha_digest, SHA256_DIGEST_LENGTH));
+            sha.size = SHA256_DIGEST_LENGTH;
+            break;
+        case S2N_HMAC_SHA384:
+            GUARD(s2n_hash_copy(&hash_state, &conn->handshake.sha384));
+            GUARD(s2n_hash_digest(&hash_state, sha_digest, SHA384_DIGEST_LENGTH));
+            sha.size = SHA384_DIGEST_LENGTH;
+            break;
+        default:
+            S2N_ERROR(S2N_ERR_PRF_INVALID_ALGORITHM);
         }
 
         sha.data = sha_digest;
@@ -311,21 +311,21 @@ int s2n_prf_server_finished(struct s2n_connection *conn)
     master_secret.data = conn->secure.master_secret;
     master_secret.size = sizeof(conn->secure.master_secret);
     if (conn->actual_protocol_version == S2N_TLS12) {
-        switch(conn->secure.cipher_suite->tls12_prf_alg) {
+        switch (conn->secure.cipher_suite->tls12_prf_alg) {
             struct s2n_hash_state hash_state;
 
-            case S2N_HMAC_SHA256:
-                GUARD(s2n_hash_copy(&hash_state, &conn->handshake.sha256));
-                GUARD(s2n_hash_digest(&hash_state, sha_digest, SHA256_DIGEST_LENGTH));
-                sha.size = SHA256_DIGEST_LENGTH;
-                break;
-            case S2N_HMAC_SHA384:
-                GUARD(s2n_hash_copy(&hash_state, &conn->handshake.sha384));
-                GUARD(s2n_hash_digest(&hash_state, sha_digest, SHA384_DIGEST_LENGTH));
-                sha.size = SHA384_DIGEST_LENGTH;
-                break;
-            default:
-                S2N_ERROR(S2N_ERR_PRF_INVALID_ALGORITHM);
+        case S2N_HMAC_SHA256:
+            GUARD(s2n_hash_copy(&hash_state, &conn->handshake.sha256));
+            GUARD(s2n_hash_digest(&hash_state, sha_digest, SHA256_DIGEST_LENGTH));
+            sha.size = SHA256_DIGEST_LENGTH;
+            break;
+        case S2N_HMAC_SHA384:
+            GUARD(s2n_hash_copy(&hash_state, &conn->handshake.sha384));
+            GUARD(s2n_hash_digest(&hash_state, sha_digest, SHA384_DIGEST_LENGTH));
+            sha.size = SHA384_DIGEST_LENGTH;
+            break;
+        default:
+            S2N_ERROR(S2N_ERR_PRF_INVALID_ALGORITHM);
         }
 
         sha.data = sha_digest;
@@ -365,11 +365,11 @@ int s2n_prf_key_expansion(struct s2n_connection *conn)
     GUARD(s2n_stuffer_init(&key_material, &out));
     GUARD(s2n_stuffer_write(&key_material, &out));
 
-    GUARD(conn->secure.cipher_suite->cipher->init(&conn->secure.client_key));
-    GUARD(conn->secure.cipher_suite->cipher->init(&conn->secure.server_key));
+    GUARD(conn->secure.cipher_suite->record_alg->cipher->init(&conn->secure.client_key));
+    GUARD(conn->secure.cipher_suite->record_alg->cipher->init(&conn->secure.server_key));
 
     /* What's our hmac algorithm? */
-    s2n_hmac_algorithm hmac_alg = conn->secure.cipher_suite->hmac_alg;
+    s2n_hmac_algorithm hmac_alg = conn->secure.cipher_suite->record_alg->hmac_alg;
     if (conn->actual_protocol_version == S2N_SSLv3) {
         if (hmac_alg == S2N_HMAC_SHA1) {
             hmac_alg = S2N_HMAC_SSLv3_SHA1;
@@ -382,61 +382,76 @@ int s2n_prf_key_expansion(struct s2n_connection *conn)
 
     /* Check that we have a valid MAC and key size */
     int mac_size;
-    GUARD((mac_size = s2n_hmac_digest_size(hmac_alg)));
+    if (conn->secure.cipher_suite->record_alg->cipher->type == S2N_COMPOSITE) {
+        mac_size = conn->secure.cipher_suite->record_alg->cipher->io.comp.mac_key_size;
+    } else {
+        GUARD((mac_size = s2n_hmac_digest_size(hmac_alg)));
+    }
 
     /* Seed the client MAC */
-    uint8_t *client_write_mac_key = s2n_stuffer_raw_read(&key_material, mac_size);
-    notnull_check(client_write_mac_key);
-    GUARD(s2n_hmac_init(&conn->secure.client_record_mac, hmac_alg, client_write_mac_key, mac_size));
+    uint8_t *client_mac_write_key = s2n_stuffer_raw_read(&key_material, mac_size);
+    notnull_check(client_mac_write_key);
+    GUARD(s2n_hmac_init(&conn->secure.client_record_mac, hmac_alg, client_mac_write_key, mac_size));
 
     /* Seed the server MAC */
-    uint8_t *server_write_mac_key = s2n_stuffer_raw_read(&key_material, mac_size);
-    notnull_check(server_write_mac_key);
-    GUARD(s2n_hmac_init(&conn->secure.server_record_mac, hmac_alg, server_write_mac_key, mac_size));
+    uint8_t *server_mac_write_key = s2n_stuffer_raw_read(&key_material, mac_size);
+    notnull_check(server_mac_write_key);
+    GUARD(s2n_hmac_init(&conn->secure.server_record_mac, hmac_alg, server_mac_write_key, mac_size));
 
     /* Make the client key */
     struct s2n_blob client_key;
-    client_key.size = conn->secure.cipher_suite->cipher->key_material_size;
+    client_key.size = conn->secure.cipher_suite->record_alg->cipher->key_material_size;
     client_key.data = s2n_stuffer_raw_read(&key_material, client_key.size);
     notnull_check(client_key.data);
     if (conn->mode == S2N_CLIENT) {
-        GUARD(conn->secure.cipher_suite->cipher->get_encryption_key(&conn->secure.client_key, &client_key));
+        GUARD(conn->secure.cipher_suite->record_alg->cipher->set_encryption_key(&conn->secure.client_key, &client_key));
     } else {
-        GUARD(conn->secure.cipher_suite->cipher->get_decryption_key(&conn->secure.client_key, &client_key));
+        GUARD(conn->secure.cipher_suite->record_alg->cipher->set_decryption_key(&conn->secure.client_key, &client_key));
     }
 
     /* Make the server key */
     struct s2n_blob server_key;
-    server_key.size = conn->secure.cipher_suite->cipher->key_material_size;
+    server_key.size = conn->secure.cipher_suite->record_alg->cipher->key_material_size;
     server_key.data = s2n_stuffer_raw_read(&key_material, server_key.size);
+
     notnull_check(server_key.data);
     if (conn->mode == S2N_SERVER) {
-        GUARD(conn->secure.cipher_suite->cipher->get_encryption_key(&conn->secure.server_key, &server_key));
+        GUARD(conn->secure.cipher_suite->record_alg->cipher->set_encryption_key(&conn->secure.server_key, &server_key));
     } else {
-        GUARD(conn->secure.cipher_suite->cipher->get_decryption_key(&conn->secure.server_key, &server_key));
+        GUARD(conn->secure.cipher_suite->record_alg->cipher->set_decryption_key(&conn->secure.server_key, &server_key));
+    }
+
+    /* Composite CBC does MAC inside the cipher, pass it the MAC key. 
+     * Must happen after setting encryption/decryption keys.
+     */
+    if (conn->secure.cipher_suite->record_alg->cipher->type == S2N_COMPOSITE) {
+        GUARD(conn->secure.cipher_suite->record_alg->cipher->io.comp.set_mac_write_key(&conn->secure.server_key, server_mac_write_key, mac_size));
+        GUARD(conn->secure.cipher_suite->record_alg->cipher->io.comp.set_mac_write_key(&conn->secure.client_key, client_mac_write_key, mac_size));
     }
 
     /* TLS >= 1.1 has no implicit IVs for non AEAD ciphers */
-    if (conn->actual_protocol_version > S2N_TLS10 &&
-        conn->secure.cipher_suite->cipher->type != S2N_AEAD) {
+    if (conn->actual_protocol_version > S2N_TLS10 && conn->secure.cipher_suite->record_alg->cipher->type != S2N_AEAD) {
         return 0;
     }
 
     uint32_t implicit_iv_size = 0;
-    switch(conn->secure.cipher_suite->cipher->type) {
-        case S2N_AEAD:
-            implicit_iv_size = conn->secure.cipher_suite->cipher->io.aead.fixed_iv_size;
-            break;
-        case S2N_CBC:
-            implicit_iv_size = conn->secure.cipher_suite->cipher->io.cbc.block_size;
-            break;
-        /* No-op for stream ciphers */
-        default:
-            break;
+    switch (conn->secure.cipher_suite->record_alg->cipher->type) {
+    case S2N_AEAD:
+        implicit_iv_size = conn->secure.cipher_suite->record_alg->cipher->io.aead.fixed_iv_size;
+        break;
+    case S2N_CBC:
+        implicit_iv_size = conn->secure.cipher_suite->record_alg->cipher->io.cbc.block_size;
+        break;
+    case S2N_COMPOSITE:
+        implicit_iv_size = conn->secure.cipher_suite->record_alg->cipher->io.comp.block_size;
+        break;
+    /* No-op for stream ciphers */
+    default:
+        break;
     }
 
-    struct s2n_blob client_implicit_iv = { .data = conn->secure.client_implicit_iv, .size = implicit_iv_size };
-    struct s2n_blob server_implicit_iv = { .data = conn->secure.server_implicit_iv, .size = implicit_iv_size };
+    struct s2n_blob client_implicit_iv = {.data = conn->secure.client_implicit_iv,.size = implicit_iv_size };
+    struct s2n_blob server_implicit_iv = {.data = conn->secure.server_implicit_iv,.size = implicit_iv_size };
     GUARD(s2n_stuffer_read(&key_material, &client_implicit_iv));
     GUARD(s2n_stuffer_read(&key_material, &server_implicit_iv));
 

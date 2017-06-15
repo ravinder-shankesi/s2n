@@ -44,7 +44,7 @@ static int s2n_serialize_resumption_state(struct s2n_connection *conn, struct s2
     /* Write the entry */
     GUARD(s2n_stuffer_write_uint8(to, S2N_SERIALIZED_FORMAT_VERSION));
     GUARD(s2n_stuffer_write_uint8(to, conn->actual_protocol_version));
-    GUARD(s2n_stuffer_write_bytes(to, conn->secure.cipher_suite->value, S2N_TLS_CIPHER_SUITE_LEN));
+    GUARD(s2n_stuffer_write_bytes(to, conn->secure.cipher_suite->iana_value, S2N_TLS_CIPHER_SUITE_LEN));
     GUARD(s2n_stuffer_write_uint64(to, now));
     GUARD(s2n_stuffer_write_bytes(to, conn->secure.master_secret, S2N_TLS_SECRET_LEN));
 
@@ -73,7 +73,7 @@ static int s2n_deserialize_resumption_state(struct s2n_connection *conn, struct 
     }
 
     GUARD(s2n_stuffer_read_bytes(from, cipher_suite, S2N_TLS_CIPHER_SUITE_LEN));
-    if (memcmp(conn->secure.cipher_suite->value, cipher_suite, S2N_TLS_CIPHER_SUITE_LEN)) {
+    if (memcmp(conn->secure.cipher_suite->iana_value, cipher_suite, S2N_TLS_CIPHER_SUITE_LEN)) {
         return -1;
     }
 
@@ -95,8 +95,8 @@ static int s2n_deserialize_resumption_state(struct s2n_connection *conn, struct 
 
 int s2n_resume_from_cache(struct s2n_connection *conn)
 {
-    uint8_t data[S2N_STATE_SIZE_IN_BYTES];
-    struct s2n_blob entry = { .data = data, .size = S2N_STATE_SIZE_IN_BYTES };
+    uint8_t data[S2N_STATE_SIZE_IN_BYTES] = { 0 };
+    struct s2n_blob entry = {.data = data,.size = S2N_STATE_SIZE_IN_BYTES };
     struct s2n_stuffer from;
     uint64_t size;
 
@@ -124,8 +124,8 @@ int s2n_resume_from_cache(struct s2n_connection *conn)
 
 int s2n_store_to_cache(struct s2n_connection *conn)
 {
-    uint8_t data[S2N_STATE_SIZE_IN_BYTES];
-    struct s2n_blob entry = { .data = data, .size = S2N_STATE_SIZE_IN_BYTES };
+    uint8_t data[S2N_STATE_SIZE_IN_BYTES] = { 0 };
+    struct s2n_blob entry = {.data = data,.size = S2N_STATE_SIZE_IN_BYTES };
     struct s2n_stuffer to;
 
     if (!s2n_is_caching_enabled(conn->config)) {
@@ -203,7 +203,7 @@ int s2n_encrypt_session_ticket(struct s2n_connection *conn, struct s2n_stuffer *
 
     s2n_blob_init(&aes_key_blob, key->aes_key, S2N_AES256_KEY_LEN);
     GUARD(s2n_aes256_gcm.init(&aes_ticket_key));
-    GUARD(s2n_aes256_gcm.get_encryption_key(&aes_ticket_key, &aes_key_blob));
+    GUARD(s2n_aes256_gcm.set_encryption_key(&aes_ticket_key, &aes_key_blob));
 
     s2n_blob_init(&aad_blob, key->aad, S2N_TLS_GCM_AAD_LEN);
 
@@ -248,7 +248,7 @@ int s2n_decrypt_session_ticket(struct s2n_connection *conn, struct s2n_stuffer *
 
     s2n_blob_init(&aes_key_blob, key->aes_key, S2N_AES256_KEY_LEN);
     GUARD(s2n_aes256_gcm.init(&aes_ticket_key));
-    GUARD(s2n_aes256_gcm.get_decryption_key(&aes_ticket_key, &aes_key_blob));
+    GUARD(s2n_aes256_gcm.set_decryption_key(&aes_ticket_key, &aes_key_blob));
 
     s2n_blob_init(&aad_blob, key->aad, S2N_TLS_GCM_AAD_LEN);
 

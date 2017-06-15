@@ -50,7 +50,7 @@ int s2n_client_hello_recv(struct s2n_connection *conn)
     GUARD(s2n_stuffer_read_uint8(in, &conn->session_id_len));
 
     conn->client_protocol_version = (client_protocol_version[0] * 10) + client_protocol_version[1];
-    if (conn->client_protocol_version < conn->config->cipher_preferences->minimum_protocol_version || conn->client_protocol_version > S2N_TLS12) {
+    if (conn->client_protocol_version < conn->config->cipher_preferences->minimum_protocol_version || conn->client_protocol_version > conn->server_protocol_version) {
         GUARD(s2n_queue_reader_unsupported_protocol_version_alert(conn));
         S2N_ERROR(S2N_ERR_BAD_MESSAGE);
     }
@@ -77,6 +77,12 @@ int s2n_client_hello_recv(struct s2n_connection *conn)
     /* This is going to be our default if the client has no preference. */
     conn->secure.server_ecc_params.negotiated_curve = &s2n_ecc_supported_curves[0];
 
+    /* Default our signature digest algorithms */
+    conn->secure.signature_digest_alg = S2N_HASH_MD5_SHA1;
+    if (conn->actual_protocol_version == S2N_TLS12) {
+        conn->secure.signature_digest_alg = S2N_HASH_SHA1;
+    }
+
     if (s2n_stuffer_data_available(in) >= 2) {
         /* Read extensions if they are present */
         GUARD(s2n_stuffer_read_uint16(in, &extensions_size));
@@ -99,7 +105,7 @@ int s2n_client_hello_recv(struct s2n_connection *conn)
 
     /* Now choose the ciphers and the cert chain. */
     GUARD(s2n_set_cipher_as_tls_server(conn, cipher_suites, cipher_suites_length / 2));
-    conn->server->chosen_cert_chain = conn->config->cert_and_key_pairs;
+    conn->server->server_cert_chain = conn->config->cert_and_key_pairs;
 
     /* Set the handshake type */
     GUARD(s2n_conn_set_handshake_type(conn));
@@ -145,6 +151,12 @@ int s2n_client_hello_send(struct s2n_connection *conn)
     /* Write the extensions */
     GUARD(s2n_client_extensions_send(conn, out));
 
+    /* Default our signature digest algorithm to SHA1. Will be used when verifying a client certificate. */
+    conn->secure.signature_digest_alg = S2N_HASH_MD5_SHA1;
+    if (conn->actual_protocol_version == S2N_TLS12) {
+        conn->secure.signature_digest_alg = S2N_HASH_SHA1;
+    }
+
     return 0;
 }
 
@@ -157,7 +169,7 @@ int s2n_sslv2_client_hello_recv(struct s2n_connection *conn)
     uint16_t challenge_length;
     uint8_t *cipher_suites;
 
-    if (conn->client_protocol_version < conn->config->cipher_preferences->minimum_protocol_version || conn->client_protocol_version > S2N_TLS12) {
+    if (conn->client_protocol_version < conn->config->cipher_preferences->minimum_protocol_version || conn->client_protocol_version > conn->server_protocol_version) {
         GUARD(s2n_queue_reader_unsupported_protocol_version_alert(conn));
         S2N_ERROR(S2N_ERR_BAD_MESSAGE);
     }
@@ -189,8 +201,7 @@ int s2n_sslv2_client_hello_recv(struct s2n_connection *conn)
     if (session_id_length > 0 && session_id_length <= S2N_TLS_SESSION_ID_MAX_LEN) {
         GUARD(s2n_stuffer_read_bytes(in, conn->session_id, session_id_length));
         conn->session_id_len = (uint8_t) session_id_length;
-    }
-    else {
+    } else {
         GUARD(s2n_stuffer_skip_read(in, session_id_length));
     }
 
@@ -203,7 +214,7 @@ int s2n_sslv2_client_hello_recv(struct s2n_connection *conn)
 
     GUARD(s2n_stuffer_read(in, &b));
 
-    conn->server->chosen_cert_chain = conn->config->cert_and_key_pairs;
+    conn->server->server_cert_chain = conn->config->cert_and_key_pairs;
     GUARD(s2n_conn_set_handshake_type(conn));
 
     return 0;

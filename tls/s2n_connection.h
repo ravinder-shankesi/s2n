@@ -52,6 +52,12 @@ struct s2n_connection {
     int readfd;
     int writefd;
 
+    /* Original socket option settings before s2n takes over the fd */
+    unsigned int original_rcvlowat_is_set:1;
+    int original_rcvlowat_val;
+    unsigned int original_cork_is_set:1;
+    int original_cork_val;
+
     /* Is this connection a client or a server connection */
     s2n_mode mode;
 
@@ -100,8 +106,10 @@ struct s2n_connection {
     struct s2n_stuffer out;
     enum { ENCRYPTED, PLAINTEXT } in_status;
 
-    /* How big is the record we are actively reading? */
-    uint16_t current_in_record_size;
+    /* How much of the current user buffer have we already
+     * encrypted and have pending for the wire.
+     */
+    ssize_t current_user_data_consumed;
 
     /* An alert may be fragmented across multiple records,
      * this stuffer is used to re-assemble.
@@ -153,6 +161,13 @@ struct s2n_connection {
     /* TLS extension data */
     char server_name[256];
     char application_protocol[256];
+    /* s2n does not support renegotiation.
+     * RFC5746 Section 4.3 suggests servers implement a minimal version of the
+     * renegotiation_info extension even if renegotiation is not supported. 
+     * Some clients may fail the handshake if a corresponding renegotiation_info
+     * extension is not sent back by the server.
+     */
+    unsigned int secure_renegotiation:1;
 
     /* OCSP stapling response data */
     s2n_status_request_type status_type;
