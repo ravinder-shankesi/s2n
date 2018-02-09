@@ -18,9 +18,21 @@ OBJS=$(SRCS:.c=.o)
 TESTS=$(SRCS:.c=)
 CRYPTO_LDFLAGS = -L$(LIBCRYPTO_ROOT)/lib
 
+ifndef LIBFUZZER_ROOT
+    export LIBFUZZER_ROOT = $(shell echo "../../fuzz_dependencies")
+endif
+
+ifndef FUZZ_TIMEOUT_SEC
+    export FUZZ_TIMEOUT_SEC=120
+endif
+
+ifndef FUZZ_TESTS
+    export FUZZ_TESTS=${TESTS}
+endif
+
+
 .PHONY : all
-all : ld-preload
-all : $(TESTS)
+all : run_tests
 
 include ../../s2n.mk
 
@@ -28,23 +40,23 @@ CRUFT += $(wildcard *_test) $(wildcard fuzz-*.log) $(wildcard *_test_output.txt)
 LIBS += -lm
 
 CFLAGS += -Wno-unreachable-code -O0 -I$(LIBCRYPTO_ROOT)/include/ -I../../ -I../../api/
-LDFLAGS += ../../fuzz_dependencies/libFuzzer.a -lstdc++ -L../../lib/ ${CRYPTO_LDFLAGS} -L../testlib/ -ls2n ${LIBS} ${CRYPTO_LIBS}
+LDFLAGS += $(LIBFUZZER_ROOT)/lib/libFuzzer.a -lstdc++ -L../../lib/ ${CRYPTO_LDFLAGS} -L../testlib/ -ls2n ${LIBS} ${CRYPTO_LIBS}
 
 DYLD_LIBRARY_PATH="../../lib/:../testlib/:$(LIBCRYPTO_ROOT)/lib:$$DYLD_LIBRARY_PATH"
 LD_LIBRARY_PATH="../../lib/:../testlib/:$(LIBCRYPTO_ROOT)/lib:$$LD_LIBRARY_PATH"
-
-FUZZ_TIMEOUT_SEC=120
 
 ld-preload :
 	${MAKE} -C LD_PRELOAD
 
 $(TESTS)::
 	@${CC} ${CFLAGS} $@.c -o $@  ${LDFLAGS} > /dev/null
-	@( \
+
+run_tests:: $(TESTS) ld-preload
+	@( for test_name in ${FUZZ_TESTS} ; do \
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}; \
 	export DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}; \
 	export LIBCRYPTO_ROOT=${LIBCRYPTO_ROOT}; \
-	./runFuzzTest.sh $@ ${FUZZ_TIMEOUT_SEC}; \
+	./runFuzzTest.sh $${test_name} ${FUZZ_TIMEOUT_SEC}; done\
 	)
 
 .PHONY : clean

@@ -77,6 +77,8 @@ typedef enum {
     S2N_ERR_SHUTDOWN_CLOSED,
     S2N_ERR_NON_EMPTY_RENEGOTIATION_INFO,
     S2N_ERR_RECORD_LIMIT,
+    S2N_ERR_CERT_UNTRUSTED,
+    S2N_ERR_CERT_TYPE_UNSUPPORTED,
     /* S2N_ERR_T_INTERNAL */
     S2N_ERR_MADVISE = S2N_ERR_T_INTERNAL_START,
     S2N_ERR_ALLOC,
@@ -89,7 +91,7 @@ typedef enum {
     S2N_ERR_NULL,
     S2N_ERR_SAFETY,
     S2N_ERR_NOT_INITIALIZED,
-    S2N_ERR_RANDOM_UNITIALIZED,
+    S2N_ERR_RANDOM_UNINITIALIZED,
     S2N_ERR_OPEN_RANDOM,
     S2N_ERR_RESIZE_STATIC_STUFFER,
     S2N_ERR_RESIZE_TAINTED_STUFFER,
@@ -111,6 +113,8 @@ typedef enum {
     S2N_ERR_MAP_IMMUTABLE,
     S2N_ERR_MAP_MUTABLE,
     S2N_ERR_INITIAL_HMAC,
+    S2N_ERR_INVALID_NONCE_TYPE,
+    S2N_ERR_UNIMPLEMENTED,
     /* S2N_ERR_T_USAGE */
     S2N_ERR_NO_ALERT = S2N_ERR_T_USAGE_START,
     S2N_ERR_CLIENT_MODE,
@@ -127,6 +131,11 @@ typedef enum {
     S2N_ERR_APPLICATION_PROTOCOL_TOO_LONG,
     S2N_ERR_KEY_MISMATCH,
     S2N_ERR_SEND_SIZE,
+    S2N_ERR_CORK_SET_ON_UNMANAGED,
+    S2N_ERR_UNRECOGNIZED_EXTENSION,
+    S2N_ERR_INVALID_SCT_LIST,
+    S2N_ERR_INVALID_OCSP_RESPONSE,
+    S2N_ERR_CANCELLED,
 } s2n_error;
 
 #define S2N_DEBUG_STR_LEN 128
@@ -136,6 +145,7 @@ extern __thread const char *s2n_debug_str;
 #define STRING_(s) TO_STRING(s)
 #define STRING__LINE__ STRING_(__LINE__)
 
-#define _S2N_ERROR( x )     s2n_debug_str = "Error encountered in " __FILE__ " line " STRING__LINE__ ; s2n_errno = ( x )
+#define _S2N_DEBUG_LINE     "Error encountered in " __FILE__ " line " STRING__LINE__
+#define _S2N_ERROR( x )     s2n_debug_str = _S2N_DEBUG_LINE; s2n_errno = ( x )
 #define S2N_ERROR( x )      _S2N_ERROR( ( x ) ); return -1
 #define S2N_ERROR_PTR( x )  _S2N_ERROR( ( x ) ); return NULL

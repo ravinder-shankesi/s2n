@@ -16,7 +16,7 @@
 #pragma once
 
 #include "tls/s2n_resume.h"
-
+#include "crypto/s2n_certificate.h"
 #include "crypto/s2n_rsa.h"
 #include "crypto/s2n_dhe.h"
 
@@ -27,23 +27,12 @@
 #define S2N_MAX_TICKET_KEYS 48
 #define S2N_MAX_TICKET_KEY_HASHES 50000 /* 1 MB stores 50,000 key hashes, which lasts about 5.7 years */
 
-struct s2n_cert_chain {
-    struct s2n_blob cert;
-    struct s2n_cert_chain *next;
-};
-
-struct s2n_cert_chain_and_key {
-    uint32_t chain_size;
-    struct s2n_cert_chain *head;
-    struct s2n_rsa_private_key private_key;
-    struct s2n_blob ocsp_status;
-    char server_name[S2N_MAX_SERVER_NAME];
-};
+struct s2n_cipher_preferences;
 
 struct s2n_config {
     struct s2n_dh_params *dhparams;
     struct s2n_cert_chain_and_key *cert_and_key_pairs;
-    struct s2n_cipher_preferences *cipher_preferences;
+    const struct s2n_cipher_preferences *cipher_preferences;
     struct s2n_blob application_protocols;
     s2n_status_request_type status_request_type;
     int (*nanoseconds_since_epoch) (void *, uint64_t *);
@@ -54,6 +43,8 @@ struct s2n_config {
     uint8_t num_prepped_ticket_keys;
     uint8_t ticket_key_hashes[S2N_MAX_TICKET_KEY_HASHES];
     uint16_t total_used_ticket_keys;
+    s2n_client_hello_fn *client_hello_cb;
+    void *client_hello_cb_ctx;
 
     /* If caching is being used, these must all be set */
     int (*cache_store) (void *data, uint64_t ttl_in_seconds, const void *key, uint64_t key_size, const void *value, uint64_t value_size);
@@ -64,6 +55,11 @@ struct s2n_config {
 
     int (*cache_delete) (void *data, const void *key, uint64_t key_size);
     void *cache_delete_data;
+    s2n_ct_support_level ct_type;
+
+    s2n_cert_auth_type client_cert_auth_type;
+    verify_cert_trust_chain *verify_cert_chain_cb;
+    void *verify_cert_context;
 };
 
 extern struct s2n_config s2n_default_config;

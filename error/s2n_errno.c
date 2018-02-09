@@ -46,7 +46,7 @@ struct s2n_error_translation EN[] = {
     {S2N_ERR_CLOSED, "connection is closed"},
     {S2N_ERR_SAFETY, "a safety check failed"},
     {S2N_ERR_NOT_INITIALIZED, "s2n not initialized"},
-    {S2N_ERR_RANDOM_UNITIALIZED, "s2n enctropy not initialized"},
+    {S2N_ERR_RANDOM_UNINITIALIZED, "s2n entropy not initialized"},
     {S2N_ERR_OPEN_RANDOM, "error opening urandom"},
     {S2N_ERR_RESIZE_STATIC_STUFFER, "cannot resize a static stuffer"},
     {S2N_ERR_RESIZE_TAINTED_STUFFER, "cannot resize a tainted stuffer"},
@@ -95,7 +95,7 @@ struct s2n_error_translation EN[] = {
     {S2N_ERR_INVALID_CIPHER_PREFERENCES, "Invalid Cipher Preferences version"},
     {S2N_ERR_APPLICATION_PROTOCOL_TOO_LONG, "Application protocol name is too long"},
     {S2N_ERR_NO_APPLICATION_PROTOCOL, "No supported application protocol to negotiate"},
-    {S2N_ERR_DRBG, "Error using Determinstic Random Bit Generator"},
+    {S2N_ERR_DRBG, "Error using Deterministic Random Bit Generator"},
     {S2N_ERR_DRBG_REQUEST_SIZE, "Request for too much entropy"},
     {S2N_ERR_ECDHE_GEN_KEY, "Failed to generate an ECDHE key"},
     {S2N_ERR_ECDHE_SHARED_SECRET, "Error computing ECDHE shared secret"},
@@ -113,6 +113,15 @@ struct s2n_error_translation EN[] = {
     {S2N_ERR_MAP_MUTABLE, "Attempt to lookup a mutable map"},
     {S2N_ERR_INITIAL_HMAC, "error calling EVP_CIPHER_CTX_ctrl for composite cbc cipher"},
     {S2N_ERR_RECORD_LIMIT, "TLS record limit reached"},
+    {S2N_ERR_CORK_SET_ON_UNMANAGED, "Attempt to set connection cork management on unmanaged IO"},
+    {S2N_ERR_UNRECOGNIZED_EXTENSION, "TLS extension not recognized" },
+    {S2N_ERR_INVALID_SCT_LIST, "SCT list is invalid" },
+    {S2N_ERR_INVALID_OCSP_RESPONSE, "OCSP response is invalid" },
+    {S2N_ERR_INVALID_NONCE_TYPE, "Invalid AEAD nonce type"},
+    {S2N_ERR_UNIMPLEMENTED, "Unimplemented feature"},
+    {S2N_ERR_CERT_UNTRUSTED, "Certificate is untrusted"},
+    {S2N_ERR_CERT_TYPE_UNSUPPORTED, "Certificate Type is unsupported"},
+    {S2N_ERR_CANCELLED, "handshake was cancelled"},
 };
 
 const char *s2n_strerror(int error, const char *lang)

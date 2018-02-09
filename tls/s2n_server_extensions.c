@@ -31,6 +31,7 @@
 static int s2n_recv_server_alpn(struct s2n_connection *conn, struct s2n_stuffer *extension);
 static int s2n_recv_server_status_request(struct s2n_connection *conn, struct s2n_stuffer *extension);
 static int s2n_recv_server_session_ticket_ext(struct s2n_connection *conn, struct s2n_stuffer *extension);
+static int s2n_recv_server_sct_list(struct s2n_connection *conn, struct s2n_stuffer *extension);
 
 int s2n_server_extensions_send(struct s2n_connection *conn, struct s2n_stuffer *out)
 {
@@ -53,6 +54,9 @@ int s2n_server_extensions_send(struct s2n_connection *conn, struct s2n_stuffer *
     if (conn->secure.cipher_suite->key_exchange_alg->flags & S2N_KEY_EXCHANGE_ECC) {
         total_size += 6;
     }
+    if (s2n_server_can_send_sct_list(conn)) {
+        total_size += 4 + conn->config->cert_and_key_pairs->sct_list.size;
+    }
 
     if (total_size == 0) {
         return 0;
@@ -60,7 +64,7 @@ int s2n_server_extensions_send(struct s2n_connection *conn, struct s2n_stuffer *
 
     GUARD(s2n_stuffer_write_uint16(out, total_size));
 
-    /* Write the Supported Points Format extention.
+    /* Write the Supported Points Format extension.
      * RFC 4492 section 5.2 states that the absence of this extension in the Server Hello
      * is equivalent to allowing only the uncompressed point format. Let's send the
      * extension in case clients(Openssl 1.0.0) don't honor the implied behavior.
@@ -106,6 +110,13 @@ int s2n_server_extensions_send(struct s2n_connection *conn, struct s2n_stuffer *
         GUARD(s2n_stuffer_write_uint16(out, TLS_EXTENSION_SESSION_TICKET));
         GUARD(s2n_stuffer_write_uint16(out, 0));
     }
+    /* Write Signed Certificate Timestamp extension */
+    if (s2n_server_can_send_sct_list(conn)) {
+        GUARD(s2n_stuffer_write_uint16(out, TLS_EXTENSION_SCT_LIST));
+        GUARD(s2n_stuffer_write_uint16(out, conn->config->cert_and_key_pairs->sct_list.size));
+        GUARD(s2n_stuffer_write_bytes(out, conn->config->cert_and_key_pairs->sct_list.data,
+                                      conn->config->cert_and_key_pairs->sct_list.size));
+    }
 
     return 0;
 }
@@ -141,6 +152,8 @@ int s2n_server_extensions_recv(struct s2n_connection *conn, struct s2n_blob *ext
             break;
         case TLS_EXTENSION_SESSION_TICKET:
             GUARD(s2n_recv_server_session_ticket_ext(conn, &extension));
+        case TLS_EXTENSION_SCT_LIST:
+            GUARD(s2n_recv_server_sct_list(conn, &extension));
             break;
         }
     }
@@ -180,6 +193,17 @@ int s2n_recv_server_status_request(struct s2n_connection *conn, struct s2n_stuff
 int s2n_recv_server_session_ticket_ext(struct s2n_connection *conn, struct s2n_stuffer *extension)
 {
     conn->session_ticket_status = S2N_EXPECTING_NEW_TICKET;
+    return 0;
+}
+int s2n_recv_server_sct_list(struct s2n_connection *conn, struct s2n_stuffer *extension)
+{
+    struct s2n_blob sct_list = { .data = NULL, .size = 0 };
+
+    sct_list.size = s2n_stuffer_data_available(extension);
+    sct_list.data = s2n_stuffer_raw_read(extension, sct_list.size);
+    notnull_check(sct_list.data);
+
+    GUARD(s2n_dup(&sct_list, &conn->ct_response));
 
     return 0;
 }

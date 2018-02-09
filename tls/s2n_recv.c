@@ -54,8 +54,11 @@ int s2n_read_full_record(struct s2n_connection *conn, uint8_t * record_type, int
     while (s2n_stuffer_data_available(&conn->header_in) < S2N_TLS_RECORD_HEADER_LENGTH) {
         int remaining = S2N_TLS_RECORD_HEADER_LENGTH - s2n_stuffer_data_available(&conn->header_in);
 
-        GUARD(s2n_socket_set_read_size(conn, remaining));
-        r = s2n_stuffer_recv_from_fd(&conn->header_in, conn->readfd, remaining);
+        if (s2n_connection_is_managed_corked(conn)) {
+            GUARD(s2n_socket_set_read_size(conn, remaining));
+        }
+        r = s2n_connection_recv_stuffer(&conn->header_in, conn, remaining);
+
         if (r == 0) {
             conn->closed = 1;
             S2N_ERROR(S2N_ERR_CLOSED);
@@ -88,8 +91,13 @@ int s2n_read_full_record(struct s2n_connection *conn, uint8_t * record_type, int
     /* Read enough to have the whole record */
     while (s2n_stuffer_data_available(&conn->in) < fragment_length) {
         int remaining = fragment_length - s2n_stuffer_data_available(&conn->in);
-        GUARD(s2n_socket_set_read_size(conn, remaining));
-        r = s2n_stuffer_recv_from_fd(&conn->in, conn->readfd, remaining);
+
+        if (s2n_connection_is_managed_corked(conn)) {
+            GUARD(s2n_socket_set_read_size(conn, remaining));
+        }
+
+        r = s2n_connection_recv_stuffer(&conn->in, conn, remaining);
+
         if (r == 0) {
             conn->closed = 1;
             S2N_ERROR(S2N_ERR_CLOSED);
@@ -143,7 +151,7 @@ ssize_t s2n_recv(struct s2n_connection * conn, void *buf, ssize_t size, s2n_bloc
                 }
             }
 
-            /* Don't propogate the error if we already read some bytes */
+            /* Don't propagate the error if we already read some bytes */
             if (s2n_errno == S2N_ERR_BLOCKED && bytes_read) {
                 s2n_errno = S2N_ERR_OK;
                 return bytes_read;
@@ -217,7 +225,7 @@ int s2n_recv_close_notify(struct s2n_connection *conn, s2n_blocked_status * bloc
         S2N_ERROR(S2N_ERR_SHUTDOWN_RECORD_TYPE);
     }
 
-    /* Only succeds for an incoming close_notify alert */
+    /* Only succeeds for an incoming close_notify alert */
     GUARD(s2n_process_alert_fragment(conn));
 
     *blocked = S2N_NOT_BLOCKED;

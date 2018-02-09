@@ -17,7 +17,7 @@
 
 #include "error/s2n_errno.h"
 
-#include "tls/s2n_cipher_suites.h"
+#include "tls/s2n_cipher_preferences.h"
 #include "tls/s2n_config.h"
 
 #include "utils/s2n_random.h"
@@ -69,168 +69,14 @@ int get_nanoseconds_since_epoch(void *data, uint64_t * nanoseconds)
 
 #endif
 
-/* s2n's list of cipher suites, in order of preference, as of 2014-06-01 */
-uint8_t wire_format_20140601[] =
-    { TLS_DHE_RSA_WITH_AES_128_CBC_SHA256, TLS_DHE_RSA_WITH_AES_128_CBC_SHA, TLS_DHE_RSA_WITH_3DES_EDE_CBC_SHA, TLS_RSA_WITH_AES_128_CBC_SHA256, TLS_RSA_WITH_AES_128_CBC_SHA,
-    TLS_RSA_WITH_3DES_EDE_CBC_SHA, TLS_RSA_WITH_RC4_128_SHA, TLS_RSA_WITH_RC4_128_MD5
-};
-
-struct s2n_cipher_preferences cipher_preferences_20140601 = {
-    .count = sizeof(wire_format_20140601) / S2N_TLS_CIPHER_SUITE_LEN,
-    .wire_format = wire_format_20140601,
-    .minimum_protocol_version = S2N_SSLv3
-};
-
-/* Disable SSLv3 due to POODLE */
-struct s2n_cipher_preferences cipher_preferences_20141001 = {
-    .count = sizeof(wire_format_20140601) / S2N_TLS_CIPHER_SUITE_LEN,
-    .wire_format = wire_format_20140601,
-    .minimum_protocol_version = S2N_TLS10
-};
-
-/* Disable RC4 */
-uint8_t wire_format_20150202[] =
-    { TLS_DHE_RSA_WITH_AES_128_CBC_SHA256, TLS_DHE_RSA_WITH_AES_128_CBC_SHA, TLS_DHE_RSA_WITH_3DES_EDE_CBC_SHA, TLS_RSA_WITH_AES_128_CBC_SHA256, TLS_RSA_WITH_AES_128_CBC_SHA,
-    TLS_RSA_WITH_3DES_EDE_CBC_SHA
-};
-
-struct s2n_cipher_preferences cipher_preferences_20150202 = {
-    .count = sizeof(wire_format_20150202) / S2N_TLS_CIPHER_SUITE_LEN,
-    .wire_format = wire_format_20150202,
-    .minimum_protocol_version = S2N_TLS10
-};
-
-/* Support AES-GCM modes */
-uint8_t wire_format_20150214[] = { TLS_DHE_RSA_WITH_AES_128_GCM_SHA256, TLS_DHE_RSA_WITH_AES_128_CBC_SHA256, TLS_DHE_RSA_WITH_AES_128_CBC_SHA, TLS_DHE_RSA_WITH_3DES_EDE_CBC_SHA,
-    TLS_RSA_WITH_AES_128_GCM_SHA256, TLS_RSA_WITH_AES_128_CBC_SHA256, TLS_RSA_WITH_AES_128_CBC_SHA, TLS_RSA_WITH_3DES_EDE_CBC_SHA
-};
-
-struct s2n_cipher_preferences cipher_preferences_20150214 = {
-    .count = sizeof(wire_format_20150214) / S2N_TLS_CIPHER_SUITE_LEN,
-    .wire_format = wire_format_20150214,
-    .minimum_protocol_version = S2N_TLS10
-};
-
-/* Make a CBC cipher #1 to avoid negotiating GCM with buggy Java clients */
-uint8_t wire_format_20160411[] = {
-    TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-    TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-    TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-    TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
-    TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-    TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384,
-    TLS_RSA_WITH_AES_128_CBC_SHA,
-    TLS_RSA_WITH_AES_128_GCM_SHA256,
-    TLS_RSA_WITH_AES_256_GCM_SHA384,
-    TLS_RSA_WITH_AES_128_CBC_SHA256,
-    TLS_RSA_WITH_AES_256_CBC_SHA,
-    TLS_RSA_WITH_AES_256_CBC_SHA256,
-    TLS_RSA_WITH_3DES_EDE_CBC_SHA,
-};
-
-struct s2n_cipher_preferences cipher_preferences_20160411 = {
-    .count = sizeof(wire_format_20160411) / S2N_TLS_CIPHER_SUITE_LEN,
-    .wire_format = wire_format_20160411,
-    .minimum_protocol_version = S2N_TLS10
-};
-
-/* Use ECDHE instead of plain DHE. Prioritize ECHDE in favour of non ECDHE; GCM in favour of CBC; AES128 in favour of AES256. */
-uint8_t wire_format_20150306[] = {
-    TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-    TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-    TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-    TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
-    TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA,
-    TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-    TLS_RSA_WITH_AES_128_GCM_SHA256,
-    TLS_RSA_WITH_AES_128_CBC_SHA256,
-    TLS_RSA_WITH_AES_128_CBC_SHA,
-    TLS_RSA_WITH_3DES_EDE_CBC_SHA
-};
-
-struct s2n_cipher_preferences cipher_preferences_20150306 = {
-    .count = sizeof(wire_format_20150306) / S2N_TLS_CIPHER_SUITE_LEN,
-    .wire_format = wire_format_20150306,
-    .minimum_protocol_version = S2N_TLS10
-};
-
-uint8_t wire_format_20160804[] = {
-    TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-    TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-    TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-    TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
-    TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-    TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384,
-    TLS_RSA_WITH_AES_128_GCM_SHA256,
-    TLS_RSA_WITH_AES_256_GCM_SHA384,
-    TLS_RSA_WITH_AES_128_CBC_SHA,
-    TLS_RSA_WITH_AES_128_CBC_SHA256,
-    TLS_RSA_WITH_AES_256_CBC_SHA,
-    TLS_RSA_WITH_AES_256_CBC_SHA256,
-    TLS_RSA_WITH_3DES_EDE_CBC_SHA
-};
-
-struct s2n_cipher_preferences cipher_preferences_20160804 = {
-    .count = sizeof(wire_format_20160804) / S2N_TLS_CIPHER_SUITE_LEN,
-    .wire_format = wire_format_20160804,
-    .minimum_protocol_version = S2N_TLS10
-};
-
-uint8_t wire_format_20160824[] = {
-    TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-    TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-    TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-    TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
-    TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-    TLS_RSA_WITH_AES_128_GCM_SHA256,
-    TLS_RSA_WITH_AES_128_CBC_SHA256,
-    TLS_RSA_WITH_AES_128_CBC_SHA
-};
-
-struct s2n_cipher_preferences cipher_preferences_20160824 = {
-    .count = sizeof(wire_format_20160824) / S2N_TLS_CIPHER_SUITE_LEN,
-    .wire_format = wire_format_20160824,
-    .minimum_protocol_version = S2N_TLS10
-};
-
-/* All supported ciphers. Only exposed for integration testing. */
-uint8_t wire_format_test_all[] = {
-    TLS_RSA_WITH_RC4_128_MD5, TLS_RSA_WITH_RC4_128_SHA, TLS_RSA_WITH_3DES_EDE_CBC_SHA, TLS_DHE_RSA_WITH_3DES_EDE_CBC_SHA,
-    TLS_RSA_WITH_AES_128_CBC_SHA, TLS_DHE_RSA_WITH_AES_128_CBC_SHA, TLS_RSA_WITH_AES_256_CBC_SHA,
-    TLS_DHE_RSA_WITH_AES_256_CBC_SHA, TLS_RSA_WITH_AES_128_CBC_SHA256, TLS_RSA_WITH_AES_256_CBC_SHA256,
-    TLS_DHE_RSA_WITH_AES_128_CBC_SHA256, TLS_DHE_RSA_WITH_AES_256_CBC_SHA256, TLS_RSA_WITH_AES_128_GCM_SHA256,
-    TLS_DHE_RSA_WITH_AES_128_GCM_SHA256, TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA, TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-    TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA, TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256, TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384,
-    TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256, TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384, TLS_RSA_WITH_AES_256_GCM_SHA384
-};
-
-struct s2n_cipher_preferences cipher_preferences_test_all = {
-    .count = sizeof(wire_format_test_all),
-    .wire_format = wire_format_test_all,
-    .minimum_protocol_version = S2N_SSLv3
-};
-
-struct {
-    const char *version;
-    struct s2n_cipher_preferences *preferences;
-} selection[] = {
-    {
-    "default", &cipher_preferences_20160824}, {
-    "20140601", &cipher_preferences_20140601}, {
-    "20141001", &cipher_preferences_20141001}, {
-    "20150202", &cipher_preferences_20150202}, {
-    "20150214", &cipher_preferences_20150214}, {
-    "20150306", &cipher_preferences_20150306}, {
-    "20160411", &cipher_preferences_20160411}, {
-    "20160804", &cipher_preferences_20160804}, {
-    "20160824", &cipher_preferences_20160824}, {
-    "test_all", &cipher_preferences_test_all}, {
-    NULL, NULL}
-};
+int deny_all_certs(uint8_t *cert_chain_in, uint32_t cert_chain_len, struct s2n_cert_public_key *public_key, void *context)
+{
+    S2N_ERROR(S2N_ERR_CERT_UNTRUSTED);
+}
 
 struct s2n_config s2n_default_config = {
     .cert_and_key_pairs = NULL,
-    .cipher_preferences = &cipher_preferences_20160824,
+    .cipher_preferences = &cipher_preferences_20170210,
     .nanoseconds_since_epoch = get_nanoseconds_since_epoch,
     .use_tickets = 1,
     .num_prepped_ticket_keys = 0,
@@ -250,6 +96,8 @@ struct s2n_config *s2n_config_new(void)
     new_config->application_protocols.size = 0;
     new_config->status_request_type = S2N_STATUS_REQUEST_NONE;
     new_config->nanoseconds_since_epoch = get_nanoseconds_since_epoch;
+    new_config->client_hello_cb = NULL;
+    new_config->client_hello_cb_ctx = NULL;
     new_config->cache_store = NULL;
     new_config->cache_store_data = NULL;
     new_config->cache_retrieve = NULL;
@@ -258,6 +106,13 @@ struct s2n_config *s2n_config_new(void)
     new_config->cache_delete_data = NULL;
     new_config->use_tickets = 1;
     new_config->num_prepped_ticket_keys = 0;
+    new_config->ct_type = S2N_CT_SUPPORT_NONE;
+
+    /* By default, only the client will authenticate the Server's Certificate. The Server does not request or
+     * authenticate any client certificates. */
+    new_config->client_cert_auth_type = S2N_CERT_AUTH_NONE;
+    new_config->verify_cert_chain_cb = deny_all_certs;
+    new_config->verify_cert_context = NULL;
 
     GUARD_PTR(s2n_config_set_cipher_preferences(new_config, "default"));
 
@@ -288,6 +143,7 @@ int s2n_config_free_cert_chain_and_key(struct s2n_config *config)
         }
         GUARD(s2n_rsa_private_key_free(&config->cert_and_key_pairs->private_key));
         GUARD(s2n_free(&config->cert_and_key_pairs->ocsp_status));
+        GUARD(s2n_free(&config->cert_and_key_pairs->sct_list));
     }
 
     GUARD(s2n_free(&b));
@@ -321,18 +177,6 @@ int s2n_config_free(struct s2n_config *config)
     return 0;
 }
 
-int s2n_config_set_cipher_preferences(struct s2n_config *config, const char *version)
-{
-    for (int i = 0; selection[i].version != NULL; i++) {
-        if (!strcasecmp(version, selection[i].version)) {
-            config->cipher_preferences = selection[i].preferences;
-            return 0;
-        }
-    }
-
-    S2N_ERROR(S2N_ERR_INVALID_CIPHER_PREFERENCES);
-}
-
 int s2n_config_set_protocol_preferences(struct s2n_config *config, const char *const *protocols, int protocol_count)
 {
     struct s2n_stuffer protocol_stuffer;
@@ -340,7 +184,7 @@ int s2n_config_set_protocol_preferences(struct s2n_config *config, const char *c
     GUARD(s2n_free(&config->application_protocols));
 
     if (protocols == NULL || protocol_count == 0) {
-        /* NULL value indicates no prference, so nothing to do */
+        /* NULL value indicates no preference, so nothing to do */
         return 0;
     }
 
@@ -350,7 +194,7 @@ int s2n_config_set_protocol_preferences(struct s2n_config *config, const char *c
         uint8_t protocol[255];
 
         if (length > 255 || (s2n_stuffer_data_available(&protocol_stuffer) + length + 1) > 65535) {
-            return S2N_ERR_APPLICATION_PROTOCOL_TOO_LONG;
+            S2N_ERROR(S2N_ERR_APPLICATION_PROTOCOL_TOO_LONG);
         }
         memcpy_check(protocol, protocols[i], length);
         GUARD(s2n_stuffer_write_uint8(&protocol_stuffer, length));
@@ -366,6 +210,14 @@ int s2n_config_set_protocol_preferences(struct s2n_config *config, const char *c
     return 0;
 }
 
+int s2n_config_set_ct_support_level(struct s2n_config *config, s2n_ct_support_level type)
+{
+    config->ct_type = type;
+
+    return 0;
+}
+
+
 int s2n_config_set_status_request_type(struct s2n_config *config, s2n_status_request_type type)
 {
     config->status_request_type = type;
@@ -373,7 +225,7 @@ int s2n_config_set_status_request_type(struct s2n_config *config, s2n_status_req
     return 0;
 }
 
-int s2n_config_add_cert_chain_and_key_with_status(struct s2n_config *config, const char *cert_chain_pem, const char *private_key_pem, const uint8_t * status, uint32_t length)
+int s2n_config_add_cert_chain_and_key(struct s2n_config *config, const char *cert_chain_pem, const char *private_key_pem)
 {
     struct s2n_stuffer chain_in_stuffer, cert_out_stuffer, key_in_stuffer, key_out_stuffer;
     struct s2n_blob key_blob;
@@ -382,14 +234,18 @@ int s2n_config_add_cert_chain_and_key_with_status(struct s2n_config *config, con
     /* Allocate the memory for the chain and key struct */
     GUARD(s2n_alloc(&mem, sizeof(struct s2n_cert_chain_and_key)));
     config->cert_and_key_pairs = (struct s2n_cert_chain_and_key *)(void *)mem.data;
+    config->cert_and_key_pairs->head = NULL;
+    config->cert_and_key_pairs->private_key.rsa = NULL;
     config->cert_and_key_pairs->ocsp_status.data = NULL;
     config->cert_and_key_pairs->ocsp_status.size = 0;
+    config->cert_and_key_pairs->sct_list.data = NULL;
+    config->cert_and_key_pairs->sct_list.size = 0;
 
     /* Put the private key pem in a stuffer */
     GUARD(s2n_stuffer_alloc_ro_from_string(&key_in_stuffer, private_key_pem));
     GUARD(s2n_stuffer_growable_alloc(&key_out_stuffer, strlen(private_key_pem)));
 
-    /* Convert pem to asn1 and asn1 to the private key */
+    /* Convert pem to asn1 and asn1 to the private key. Handles both PKCS#1 and PKCS#8 formats */
     GUARD(s2n_stuffer_rsa_private_key_from_pem(&key_in_stuffer, &key_out_stuffer));
     GUARD(s2n_stuffer_free(&key_in_stuffer));
     key_blob.size = s2n_stuffer_data_available(&key_out_stuffer);
@@ -432,11 +288,6 @@ int s2n_config_add_cert_chain_and_key_with_status(struct s2n_config *config, con
 
     config->cert_and_key_pairs->chain_size = chain_size;
 
-    if (status && length > 0) {
-        GUARD(s2n_alloc(&config->cert_and_key_pairs->ocsp_status, length));
-        memcpy_check(config->cert_and_key_pairs->ocsp_status.data, status, length);
-    }
-
     /* Validate the leaf cert's public key matches the provided private key */
     struct s2n_rsa_public_key public_key;
     GUARD(s2n_asn1der_to_rsa_public_key(&public_key, &config->cert_and_key_pairs->head->cert));
@@ -446,13 +297,6 @@ int s2n_config_add_cert_chain_and_key_with_status(struct s2n_config *config, con
         /* s2n_errno already set */
         return -1;
     }
-
-    return 0;
-}
-
-int s2n_config_add_cert_chain_and_key(struct s2n_config *config, const char *cert_chain_pem, const char *private_key_pem)
-{
-    GUARD(s2n_config_add_cert_chain_and_key_with_status(config, cert_chain_pem, private_key_pem, NULL, 0));
 
     return 0;
 }
@@ -595,5 +439,43 @@ int s2n_config_add_ticket_crypto_key(struct s2n_config *config,
 
 int s2n_config_wipe_expired_ticket_crypto_keys(struct s2n_config *config)
 {
+    return 0;
+}
+
+int s2n_config_set_extension_data(struct s2n_config *config, s2n_tls_extension_type type, const uint8_t *data, uint32_t length)
+{
+    notnull_check(config);
+
+    switch (type) {
+        case S2N_EXTENSION_CERTIFICATE_TRANSPARENCY:
+            {
+                GUARD(s2n_free(&config->cert_and_key_pairs->sct_list));
+
+                if (data && length) {
+                    GUARD(s2n_alloc(&config->cert_and_key_pairs->sct_list, length));
+                    memcpy_check(config->cert_and_key_pairs->sct_list.data, data, length);
+                }
+            } break;
+        case S2N_EXTENSION_OCSP_STAPLING:
+            {
+                GUARD(s2n_free(&config->cert_and_key_pairs->ocsp_status));
+
+                if (data && length) {
+                    GUARD(s2n_alloc(&config->cert_and_key_pairs->ocsp_status, length));
+                    memcpy_check(config->cert_and_key_pairs->ocsp_status.data, data, length);
+                }
+            } break;
+        default:
+            S2N_ERROR(S2N_ERR_UNRECOGNIZED_EXTENSION);
+    }
+
+    return 0;
+}
+
+int s2n_config_set_client_hello_cb(struct s2n_config *config, s2n_client_hello_fn client_hello_cb, void *ctx)
+{
+    config->client_hello_cb = client_hello_cb;
+    config->client_hello_cb_ctx = ctx;
+
     return 0;
 }

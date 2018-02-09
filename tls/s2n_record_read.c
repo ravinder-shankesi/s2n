@@ -72,6 +72,16 @@ int s2n_record_header_parse(struct s2n_connection *conn, uint8_t * content_type,
 
     uint8_t version = (protocol_version[0] * 10) + protocol_version[1];
 
+    uint8_t tls_major_version = protocol_version[0];
+    /* TLS servers compliant with this specification MUST accept any value {03,XX} as the record layer version number
+     * for ClientHello.
+     *
+     * https://tools.ietf.org/html/rfc5246#appendix-E.1 */
+    if (tls_major_version < S2N_MINIMUM_SUPPORTED_TLS_RECORD_MAJOR_VERSION
+        || S2N_MAXIMUM_SUPPORTED_TLS_RECORD_MAJOR_VERSION < tls_major_version) {
+        S2N_ERROR(S2N_ERR_BAD_MESSAGE);
+    }
+
     if (conn->actual_protocol_version_established && conn->actual_protocol_version != version) {
         S2N_ERROR(S2N_ERR_BAD_MESSAGE);
     }
@@ -102,7 +112,7 @@ int s2n_record_parse(struct s2n_connection *conn)
     uint8_t *sequence_number = conn->client->client_sequence_number;
     struct s2n_hmac_state *mac = &conn->client->client_record_mac;
     struct s2n_session_key *session_key = &conn->client->client_key;
-    struct s2n_cipher_suite *cipher_suite = conn->client->cipher_suite;
+    const struct s2n_cipher_suite *cipher_suite = conn->client->cipher_suite;
     uint8_t *implicit_iv = conn->client->client_implicit_iv;
 
     if (conn->mode == S2N_CLIENT) {
@@ -142,9 +152,9 @@ int s2n_record_parse(struct s2n_connection *conn)
     notnull_check(en.data);
 
     uint16_t payload_length = encrypted_length;
-    int mac_digest_size = s2n_hmac_digest_size(mac->alg);
+    uint8_t mac_digest_size;
+    GUARD(s2n_hmac_digest_size(mac->alg, &mac_digest_size));
 
-    gte_check(mac_digest_size, 0);
     gte_check(payload_length, mac_digest_size);
     payload_length -= mac_digest_size;
 
@@ -154,10 +164,11 @@ int s2n_record_parse(struct s2n_connection *conn)
     if (cipher_suite->record_alg->cipher->type == S2N_COMPOSITE) {
         /* In the decrypt case, this outputs the MAC digest length:
          * https://github.com/openssl/openssl/blob/master/crypto/evp/e_aes_cbc_hmac_sha1.c#L842 */
-        int mac_size;
+        int mac_size = 0;
         GUARD(cipher_suite->record_alg->cipher->io.comp.initial_hmac(session_key, sequence_number, content_type, conn->actual_protocol_version,
-                                                         payload_length, &mac_size));
+                                                                     payload_length, &mac_size));
 
+        gte_check(payload_length, mac_size);
         payload_length -= mac_size;
         /* Adjust payload_length for explicit IV */
         if (conn->actual_protocol_version > S2N_TLS10) {
@@ -174,8 +185,22 @@ int s2n_record_parse(struct s2n_connection *conn)
         iv.size = sizeof(aad_iv);
 
         GUARD(s2n_stuffer_init(&iv_stuffer, &iv));
-        GUARD(s2n_stuffer_write_bytes(&iv_stuffer, implicit_iv, cipher_suite->record_alg->cipher->io.aead.fixed_iv_size));
-        GUARD(s2n_stuffer_write_bytes(&iv_stuffer, en.data, cipher_suite->record_alg->cipher->io.aead.record_iv_size));
+
+        if (cipher_suite->record_alg->flags & S2N_TLS12_AES_GCM_AEAD_NONCE) {
+            /* Partially explicit nonce. See RFC 5288 Section 3 */
+            GUARD(s2n_stuffer_write_bytes(&iv_stuffer, implicit_iv, cipher_suite->record_alg->cipher->io.aead.fixed_iv_size));
+            GUARD(s2n_stuffer_write_bytes(&iv_stuffer, en.data, cipher_suite->record_alg->cipher->io.aead.record_iv_size));
+        } else if (cipher_suite->record_alg->flags & S2N_TLS12_CHACHA_POLY_AEAD_NONCE) {
+            /* Fully implicit nonce. See RFC 7905 Section 2 */
+            uint8_t four_zeroes[4] = { 0 };
+            GUARD(s2n_stuffer_write_bytes(&iv_stuffer, four_zeroes, 4));
+            GUARD(s2n_stuffer_write_bytes(&iv_stuffer, sequence_number, S2N_TLS_SEQUENCE_NUM_LEN));
+            for(int i = 0; i < cipher_suite->record_alg->cipher->io.aead.fixed_iv_size; i++) {
+                aad_iv[i] = aad_iv[i] ^ implicit_iv[i];
+            }
+        } else {
+            S2N_ERROR(S2N_ERR_INVALID_NONCE_TYPE);
+        }
 
         /* Set the IV size to the amount of data written */
         iv.size = s2n_stuffer_data_available(&iv_stuffer);
@@ -195,52 +220,52 @@ int s2n_record_parse(struct s2n_connection *conn)
 
     /* Decrypt stuff! */
     switch (cipher_suite->record_alg->cipher->type) {
-    case S2N_STREAM:
-        GUARD(cipher_suite->record_alg->cipher->io.stream.decrypt(session_key, &en, &en));
-        break;
-    case S2N_CBC:
-        /* Check that we have some data to decrypt */
-        ne_check(en.size, 0);
+        case S2N_STREAM:
+            GUARD(cipher_suite->record_alg->cipher->io.stream.decrypt(session_key, &en, &en));
+            break;
+        case S2N_CBC:
+            /* Check that we have some data to decrypt */
+            ne_check(en.size, 0);
 
-        /* ... and that we have a multiple of the block size */
-        eq_check(en.size % iv.size, 0);
+            /* ... and that we have a multiple of the block size */
+            eq_check(en.size % iv.size, 0);
 
-        /* Copy the last encrypted block to be the next IV */
-        if (conn->actual_protocol_version < S2N_TLS11) {
+            /* Copy the last encrypted block to be the next IV */
+            if (conn->actual_protocol_version < S2N_TLS11) {
+                memcpy_check(ivpad, en.data + en.size - iv.size, iv.size);
+            }
+
+            GUARD(cipher_suite->record_alg->cipher->io.cbc.decrypt(session_key, &iv, &en, &en));
+
+            if (conn->actual_protocol_version < S2N_TLS11) {
+                memcpy_check(implicit_iv, ivpad, iv.size);
+            }
+            break;
+        case S2N_AEAD:
+            /* Skip explicit IV for decryption */
+            en.size -= cipher_suite->record_alg->cipher->io.aead.record_iv_size;
+            en.data += cipher_suite->record_alg->cipher->io.aead.record_iv_size;
+
+            /* Check that we have some data to decrypt */
+            ne_check(en.size, 0);
+
+            GUARD(cipher_suite->record_alg->cipher->io.aead.decrypt(session_key, &iv, &aad, &en, &en));
+            break;
+        case S2N_COMPOSITE:
+            ne_check(en.size, 0);
+            eq_check(en.size % iv.size,  0);
+
+            /* Copy the last encrypted block to be the next IV */
             memcpy_check(ivpad, en.data + en.size - iv.size, iv.size);
-        }
 
-        GUARD(cipher_suite->record_alg->cipher->io.cbc.decrypt(session_key, &iv, &en, &en));
+            /* This will: Skip the explicit IV(if applicable), decrypt the payload, verify the MAC and padding. */
+            GUARD((cipher_suite->record_alg->cipher->io.comp.decrypt(session_key, &iv, &en, &en)));
 
-        if (conn->actual_protocol_version < S2N_TLS11) {
             memcpy_check(implicit_iv, ivpad, iv.size);
-        }
-        break;
-    case S2N_AEAD:
-        /* Skip explicit IV for decryption */
-        en.size -= cipher_suite->record_alg->cipher->io.aead.record_iv_size;
-        en.data += cipher_suite->record_alg->cipher->io.aead.record_iv_size;
-
-        /* Check that we have some data to decrypt */
-        ne_check(en.size, 0);
-
-        GUARD(cipher_suite->record_alg->cipher->io.aead.decrypt(session_key, &iv, &aad, &en, &en));
-        break;
-    case S2N_COMPOSITE:
-        ne_check(en.size, 0);
-        eq_check(en.size % iv.size,  0);
-
-        /* Copy the last encrypted block to be the next IV */
-        memcpy_check(ivpad, en.data + en.size - iv.size, iv.size);
-
-        /* This will: Skip the explicit IV(if applicable), decrypt the payload, verify the MAC and padding. */
-        GUARD((cipher_suite->record_alg->cipher->io.comp.decrypt(session_key, &iv, &en, &en)));
-
-        memcpy_check(implicit_iv, ivpad, iv.size);
-        break;
-    default:
-        S2N_ERROR(S2N_ERR_CIPHER_TYPE);
-        break;
+            break;
+        default:
+            S2N_ERROR(S2N_ERR_CIPHER_TYPE);
+            break;
     }
 
     /* Subtract the padding length */

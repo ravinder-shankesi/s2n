@@ -17,12 +17,15 @@
 Simple handshake tests using gnutls-cli
 """
 
+import argparse
 import os
 import sys
 import ssl
 import socket
 import subprocess
 import itertools
+import multiprocessing
+from multiprocessing.pool import ThreadPool
 from s2n_test_constants import *
 
 def try_gnutls_handshake(endpoint, port, priority_str):
@@ -76,35 +79,56 @@ def try_gnutls_handshake(endpoint, port, priority_str):
 def handshake(endpoint, port, cipher_name, ssl_version, priority_str, digests):
     ret = try_gnutls_handshake(endpoint, port, priority_str)
 
+    prefix = ""
     if len(digests) == 0:
-        print("Cipher: %-30s Vers: %-10s ... " % (cipher_name, S2N_PROTO_VERS_TO_STR[ssl_version]), end='')
+        prefix = "Cipher: %-30s Vers: %-10s ... " % (cipher_name, S2N_PROTO_VERS_TO_STR[ssl_version])
     else:
         # strip the first nine bytes from each name ("RSA-SIGN-")
         digest_string = ':'.join([x[9:] for x in digests])
-        print("Digests: %-40s Vers: %-10s ... " % (digest_string, S2N_PROTO_VERS_TO_STR[ssl_version]), end='')
+        prefix = "Digests: %-40s Vers: %-10s ... " % (digest_string, S2N_PROTO_VERS_TO_STR[ssl_version])
 
+    suffix = ""
     if ret == 0:
         if sys.stdout.isatty():
-            print("\033[32;1mPASSED\033[0m")
+            suffix = "\033[32;1mPASSED\033[0m"
         else:
-            print("PASSED")
-        return 0
+            suffix = "PASSED"
     else:
         if sys.stdout.isatty():
-            print("\033[31;1mFAILED\033[0m")
+            suffix = "\033[31;1mFAILED\033[0m"
         else:
-            print("FAILED")
-        return -1
+            suffix = "FAILED"
+    print(prefix + suffix)
+    return ret
 
-def main(argv):
-    if len(argv) < 2:
-        print("s2n_handshake_test_gnutls.py host port")
-        sys.exit(1)
+def create_thread_pool():
+    threadpool_size = multiprocessing.cpu_count() * 2  #Multiply by 2 since performance improves slightly if CPU has hyperthreading
+    print("\tCreating ThreadPool of size: " + str(threadpool_size))
+    threadpool = ThreadPool(processes=threadpool_size)
+    return threadpool
+
+def main():
+    parser = argparse.ArgumentParser(description='Runs TLS server integration tests against s2nd using gnutls-cli')
+    parser.add_argument('host', help='The host for s2nd to bind to')
+    parser.add_argument('port', type=int, help='The port for s2nd to bind to')
+    parser.add_argument('--libcrypto', default='openssl-1.1.0', choices=['openssl-1.0.2', 'openssl-1.1.0', 'libressl'],
+            help="""The Libcrypto that s2n was built with. s2n supports different cipher suites depending on
+                    libcrypto version. Defaults to openssl-1.1.0.""")
+    args = parser.parse_args()
+
+    # Retrieve the test ciphers to use based on the libcrypto version s2n was built with
+    test_ciphers = S2N_LIBCRYPTO_TO_TEST_CIPHERS[args.libcrypto]
+    host = args.host
+    port = args.port
 
     print("\nRunning GnuTLS handshake tests with: " + os.popen('gnutls-cli --version | grep -w gnutls-cli').read())
     for ssl_version in [S2N_SSLv3, S2N_TLS10, S2N_TLS11, S2N_TLS12]:
         print("\n\tTesting ciphers using client version: " + S2N_PROTO_VERS_TO_STR[ssl_version])
-        for cipher in S2N_CIPHERS:
+        threadpool = create_thread_pool()
+        port_offset = 0
+        results = []
+
+        for cipher in test_ciphers:
             # Use the Openssl name for printing
             cipher_name = cipher.openssl_name
             cipher_priority_str = cipher.gnutls_priority_str
@@ -116,22 +140,36 @@ def main(argv):
             # Add the SSL version to make the cipher priority string fully qualified
             complete_priority_str = cipher_priority_str + ":+" + S2N_PROTO_VERS_TO_GNUTLS[ssl_version] + ":+SIGN-ALL"
 
-            if handshake(argv[0], int(argv[1]), cipher_name, ssl_version, complete_priority_str, []) < 0:
+            async_result = threadpool.apply_async(handshake, (host, port + port_offset, cipher_name, ssl_version, complete_priority_str, []))
+            port_offset += 1
+            results.append(async_result)
+
+        threadpool.close()
+        threadpool.join()
+        for async_result in results:
+            if async_result.get() != 0:
                 return -1
 
     # Produce permutations of every accepted signature alrgorithm in every possible order
     signatures = ["SIGN-RSA-SHA1", "SIGN-RSA-SHA224", "SIGN-RSA-SHA256", "SIGN-RSA-SHA384", "SIGN-RSA-SHA512"];
     for size in range(1, len(signatures) + 1):
         print("\n\tTesting ciphers using signature preferences of size: " + str(size))
-
+        threadpool = create_thread_pool()
+        port_offset = 0
+        results = []
         for permutation in itertools.permutations(signatures, size):
-
             # Try an ECDHE cipher suite and a DHE one
-            for cipher in filter(lambda x: x.openssl_name == "ECDHE-RSA-AES128-GCM-SHA256" or x.openssl_name == "DHE-RSA-AES128-GCM-SHA256", S2N_CIPHERS):
-
+            for cipher in filter(lambda x: x.openssl_name == "ECDHE-RSA-AES128-GCM-SHA256" or x.openssl_name == "DHE-RSA-AES128-GCM-SHA256", ALL_TEST_CIPHERS):
                 complete_priority_str = cipher.gnutls_priority_str + ":+VERS-TLS1.2:+" + ":+".join(permutation)
-                if handshake(argv[0], int(argv[1]), cipher.openssl_name, S2N_TLS12, complete_priority_str, permutation) < 0:
-                    return -1
+                async_result = threadpool.apply_async(handshake,(host, port + port_offset, cipher.openssl_name, S2N_TLS12, complete_priority_str, permutation))
+                port_offset += 1
+                results.append(async_result)
+
+        threadpool.close()
+        threadpool.join()
+        for async_result in results:
+            if async_result.get() != 0:
+                return -1
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(main())

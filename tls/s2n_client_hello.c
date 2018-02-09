@@ -19,6 +19,7 @@
 
 #include "error/s2n_errno.h"
 
+#include "tls/s2n_cipher_preferences.h"
 #include "tls/s2n_cipher_suites.h"
 #include "tls/s2n_connection.h"
 #include "tls/s2n_alerts.h"
@@ -50,7 +51,7 @@ int s2n_client_hello_recv(struct s2n_connection *conn)
     GUARD(s2n_stuffer_read_uint8(in, &conn->session_id_len));
 
     conn->client_protocol_version = (client_protocol_version[0] * 10) + client_protocol_version[1];
-    if (conn->client_protocol_version < conn->config->cipher_preferences->minimum_protocol_version || conn->client_protocol_version > conn->server_protocol_version) {
+    if (conn->client_protocol_version > conn->server_protocol_version) {
         GUARD(s2n_queue_reader_unsupported_protocol_version_alert(conn));
         S2N_ERROR(S2N_ERR_BAD_MESSAGE);
     }
@@ -78,9 +79,9 @@ int s2n_client_hello_recv(struct s2n_connection *conn)
     conn->secure.server_ecc_params.negotiated_curve = &s2n_ecc_supported_curves[0];
 
     /* Default our signature digest algorithms */
-    conn->secure.signature_digest_alg = S2N_HASH_MD5_SHA1;
+    conn->secure.conn_hash_alg = S2N_HASH_MD5_SHA1;
     if (conn->actual_protocol_version == S2N_TLS12) {
-        conn->secure.signature_digest_alg = S2N_HASH_SHA1;
+        conn->secure.conn_hash_alg = S2N_HASH_SHA1;
     }
 
     if (s2n_stuffer_data_available(in) >= 2) {
@@ -103,6 +104,18 @@ int s2n_client_hello_recv(struct s2n_connection *conn)
         conn->session_id_len = 0;
     }
 
+    if (conn->config->client_hello_cb) {
+        if (conn->config->client_hello_cb(conn, conn->config->client_hello_cb_ctx) < 0) {
+            GUARD(s2n_queue_reader_handshake_failure_alert(conn));
+            S2N_ERROR(S2N_ERR_CANCELLED);
+        }
+    }
+
+    if (conn->client_protocol_version < conn->config->cipher_preferences->minimum_protocol_version) {
+        GUARD(s2n_queue_reader_unsupported_protocol_version_alert(conn));
+        S2N_ERROR(S2N_ERR_BAD_MESSAGE);
+    }
+
     /* Now choose the ciphers and the cert chain. */
     GUARD(s2n_set_cipher_as_tls_server(conn, cipher_suites, cipher_suites_length / 2));
     conn->server->server_cert_chain = conn->config->cert_and_key_pairs;
@@ -115,7 +128,6 @@ int s2n_client_hello_recv(struct s2n_connection *conn)
 
 int s2n_client_hello_send(struct s2n_connection *conn)
 {
-    uint32_t gmt_unix_time = time(NULL);
     struct s2n_stuffer *out = &conn->handshake.io;
     struct s2n_stuffer client_random;
     struct s2n_blob b, r;
@@ -127,10 +139,9 @@ int s2n_client_hello_send(struct s2n_connection *conn)
 
     /* Create the client random data */
     GUARD(s2n_stuffer_init(&client_random, &b));
-    GUARD(s2n_stuffer_write_uint32(&client_random, gmt_unix_time));
 
-    r.data = s2n_stuffer_raw_write(&client_random, S2N_TLS_RANDOM_DATA_LEN - 4);
-    r.size = S2N_TLS_RANDOM_DATA_LEN - 4;
+    r.data = s2n_stuffer_raw_write(&client_random, S2N_TLS_RANDOM_DATA_LEN);
+    r.size = S2N_TLS_RANDOM_DATA_LEN;
     notnull_check(r.data);
     GUARD(s2n_get_public_random_data(&r));
 
@@ -141,8 +152,26 @@ int s2n_client_hello_send(struct s2n_connection *conn)
     GUARD(s2n_stuffer_write_bytes(out, client_protocol_version, S2N_TLS_PROTOCOL_VERSION_LEN));
     GUARD(s2n_stuffer_copy(&client_random, out, S2N_TLS_RANDOM_DATA_LEN));
     GUARD(s2n_stuffer_write_uint8(out, session_id_len));
-    GUARD(s2n_stuffer_write_uint16(out, conn->config->cipher_preferences->count * S2N_TLS_CIPHER_SUITE_LEN));
-    GUARD(s2n_stuffer_write_bytes(out, conn->config->cipher_preferences->wire_format, conn->config->cipher_preferences->count * S2N_TLS_CIPHER_SUITE_LEN));
+
+    /* Find the number of available suites in the preference list. Some ciphers may be unavailable if s2n is built
+     * with an older libcrypto
+     */
+    uint16_t num_available_suites = 0;
+    for (int i = 0; i < conn->config->cipher_preferences->count; i++) {
+        if (conn->config->cipher_preferences->suites[i]->available) {
+            num_available_suites++;
+        }
+    }
+
+    /* Write size of the list of available ciphers */
+    GUARD(s2n_stuffer_write_uint16(out, num_available_suites * S2N_TLS_CIPHER_SUITE_LEN));
+
+    /* Now, write the IANA values every available cipher suite in our list */
+    for (int i = 0; i < conn->config->cipher_preferences->count; i++ ) {
+        if (conn->config->cipher_preferences->suites[i]->available) {
+            GUARD(s2n_stuffer_write_bytes(out, conn->config->cipher_preferences->suites[i]->iana_value, S2N_TLS_CIPHER_SUITE_LEN));
+        }
+    }
 
     /* Zero compression methods */
     GUARD(s2n_stuffer_write_uint8(out, 1));
@@ -152,9 +181,9 @@ int s2n_client_hello_send(struct s2n_connection *conn)
     GUARD(s2n_client_extensions_send(conn, out));
 
     /* Default our signature digest algorithm to SHA1. Will be used when verifying a client certificate. */
-    conn->secure.signature_digest_alg = S2N_HASH_MD5_SHA1;
+    conn->secure.conn_hash_alg = S2N_HASH_MD5_SHA1;
     if (conn->actual_protocol_version == S2N_TLS12) {
-        conn->secure.signature_digest_alg = S2N_HASH_SHA1;
+        conn->secure.conn_hash_alg = S2N_HASH_SHA1;
     }
 
     return 0;

@@ -34,10 +34,16 @@ extern int s2n_server_status_send(struct s2n_connection *conn);
 extern int s2n_server_status_recv(struct s2n_connection *conn);
 extern int s2n_server_key_send(struct s2n_connection *conn);
 extern int s2n_server_key_recv(struct s2n_connection *conn);
+extern int s2n_client_cert_req_recv(struct s2n_connection *conn);
+extern int s2n_client_cert_req_send(struct s2n_connection *conn);
 extern int s2n_server_done_send(struct s2n_connection *conn);
 extern int s2n_server_done_recv(struct s2n_connection *conn);
+extern int s2n_client_cert_recv(struct s2n_connection *conn);
+extern int s2n_client_cert_send(struct s2n_connection *conn);
 extern int s2n_client_key_send(struct s2n_connection *conn);
 extern int s2n_client_key_recv(struct s2n_connection *conn);
+extern int s2n_client_cert_verify_recv(struct s2n_connection *conn);
+extern int s2n_client_cert_verify_send(struct s2n_connection *conn);
 extern int s2n_client_ccs_send(struct s2n_connection *conn);
 extern int s2n_client_ccs_recv(struct s2n_connection *conn);
 extern int s2n_server_nst_send(struct s2n_connection *conn);
@@ -61,6 +67,14 @@ extern int s2n_server_extensions_recv(struct s2n_connection *conn, struct s2n_bl
 #define s2n_server_can_send_ocsp(conn) ((conn)->status_type == S2N_STATUS_REQUEST_OCSP && \
         (conn)->config->cert_and_key_pairs && \
         (conn)->config->cert_and_key_pairs->ocsp_status.size > 0)
+
 #define s2n_server_sending_nst(conn) ((conn)->config->use_tickets && \
         ((conn)->session_ticket_status == S2N_EXPECTING_NEW_TICKET || \
          (conn)->session_ticket_status == S2N_RENEW_TICKET))
+
+#define s2n_server_sent_ocsp(conn) ((conn)->mode == S2N_CLIENT && \
+        (conn)->status_type == S2N_STATUS_REQUEST_OCSP)
+
+#define s2n_server_can_send_sct_list(conn) ((conn)->ct_level_requested == S2N_CT_SUPPORT_REQUEST && \
+        (conn)->config->cert_and_key_pairs && \
+        (conn)->config->cert_and_key_pairs->sct_list.size > 0)

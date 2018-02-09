@@ -36,7 +36,7 @@ rm openssl-1.0.2.tar.gz
 cd openssl-1.0.2*
 
 if [ "$PLATFORM" == "linux" ]; then
-    CONFIGURE="./config"
+    CONFIGURE="./config -d"
 elif [ "$PLATFORM" == "osx" ]; then
     CONFIGURE="./Configure darwin64-x86_64-cc"
 else

@@ -20,6 +20,7 @@
 
 #include "error/s2n_errno.h"
 
+#include "tls/s2n_cipher_preferences.h"
 #include "tls/s2n_cipher_suites.h"
 #include "tls/s2n_connection.h"
 #include "tls/s2n_alerts.h"
@@ -71,33 +72,24 @@ int s2n_server_hello_recv(struct s2n_connection *conn)
         S2N_ERROR(S2N_ERR_BAD_MESSAGE);
     }
 
+    if (s2n_stuffer_data_available(in) >= 2) {
+        GUARD(s2n_stuffer_read_uint16(in, &extensions_size));
+
+        if (extensions_size > s2n_stuffer_data_available(in)) {
+            S2N_ERROR(S2N_ERR_BAD_MESSAGE);
+        }
+
+        struct s2n_blob extensions;
+        extensions.size = extensions_size;
+        extensions.data = s2n_stuffer_raw_read(in, extensions.size);
+        notnull_check(extensions.data);
+
+        GUARD(s2n_server_extensions_recv(conn, &extensions));
+    }
+
     GUARD(s2n_conn_set_handshake_type(conn));
 
     if (IS_RESUMPTION_HANDSHAKE(conn->handshake.handshake_type)) {
-        GUARD(s2n_prf_key_expansion(conn));
-    }
-
-    if (s2n_stuffer_data_available(in) < 2) {
-        /* No extensions */
-        return 0;
-    }
-
-
-    /* Read extensions if they are present */
-    GUARD(s2n_stuffer_read_uint16(in, &extensions_size));
-
-    if (extensions_size > s2n_stuffer_data_available(in)) {
-        S2N_ERROR(S2N_ERR_BAD_MESSAGE);
-    }
-
-    struct s2n_blob extensions;
-    extensions.size = extensions_size;
-    extensions.data = s2n_stuffer_raw_read(in, extensions.size);
-    notnull_check(extensions.data);
-
-    GUARD(s2n_server_extensions_recv(conn, &extensions));
-
-    if (conn->handshake.handshake_type == RESUME) {
         GUARD(s2n_prf_key_expansion(conn));
     }
 
@@ -106,7 +98,6 @@ int s2n_server_hello_recv(struct s2n_connection *conn)
 
 int s2n_server_hello_send(struct s2n_connection *conn)
 {
-    uint32_t gmt_unix_time = time(NULL);
     struct s2n_stuffer *out = &conn->handshake.io;
     struct s2n_stuffer server_random;
     struct s2n_blob b, r;
@@ -117,10 +108,9 @@ int s2n_server_hello_send(struct s2n_connection *conn)
 
     /* Create the server random data */
     GUARD(s2n_stuffer_init(&server_random, &b));
-    GUARD(s2n_stuffer_write_uint32(&server_random, gmt_unix_time));
 
-    r.data = s2n_stuffer_raw_write(&server_random, S2N_TLS_RANDOM_DATA_LEN - 4);
-    r.size = S2N_TLS_RANDOM_DATA_LEN - 4;
+    r.data = s2n_stuffer_raw_write(&server_random, S2N_TLS_RANDOM_DATA_LEN);
+    r.size = S2N_TLS_RANDOM_DATA_LEN;
     notnull_check(r.data);
     GUARD(s2n_get_public_random_data(&r));
 
@@ -130,12 +120,12 @@ int s2n_server_hello_send(struct s2n_connection *conn)
 
     GUARD(s2n_stuffer_write_bytes(out, protocol_version, S2N_TLS_PROTOCOL_VERSION_LEN));
     GUARD(s2n_stuffer_write_bytes(out, conn->secure.server_random, S2N_TLS_RANDOM_DATA_LEN));
-GUARD(s2n_stuffer_write_uint8(out, conn->session_id_len));
-GUARD(s2n_stuffer_write_bytes(out, conn->session_id, conn->session_id_len));
-GUARD(s2n_stuffer_write_bytes(out, conn->secure.cipher_suite->iana_value, S2N_TLS_CIPHER_SUITE_LEN));
-GUARD(s2n_stuffer_write_uint8(out, S2N_TLS_COMPRESSION_METHOD_NULL));
+    GUARD(s2n_stuffer_write_uint8(out, conn->session_id_len));
+    GUARD(s2n_stuffer_write_bytes(out, conn->session_id, conn->session_id_len));
+    GUARD(s2n_stuffer_write_bytes(out, conn->secure.cipher_suite->iana_value, S2N_TLS_CIPHER_SUITE_LEN));
+    GUARD(s2n_stuffer_write_uint8(out, S2N_TLS_COMPRESSION_METHOD_NULL));
 
-GUARD(s2n_server_extensions_send(conn, out));
+    GUARD(s2n_server_extensions_send(conn, out));
 
     conn->actual_protocol_version_established = 1;
 

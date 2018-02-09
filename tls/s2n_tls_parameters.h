@@ -46,6 +46,9 @@
 #define TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256    0xC0, 0x2F
 #define TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384    0xC0, 0x30
 
+#define TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256  0xCC, 0xA8
+#define TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256    0xCC, 0xAA
+
 /* From https://tools.ietf.org/html/rfc7507 */
 #define TLS_FALLBACK_SCSV                   0x56, 0x00
 #define TLS_EMPTY_RENEGOTIATION_INFO_SCSV   0x00, 0xff
@@ -57,11 +60,16 @@
 #define TLS_EXTENSION_EC_POINT_FORMATS     11
 #define TLS_EXTENSION_SIGNATURE_ALGORITHMS 13
 #define TLS_EXTENSION_ALPN                 16
+#define TLS_EXTENSION_SCT_LIST             18
 #define TLS_EXTENSION_RENEGOTIATION_INFO   65281
 #define TLS_EXTENSION_SESSION_TICKET       35
 
-/* TLS signature algorithms */
+/* TLS Signature Algorithms - RFC 5246 7.4.1.4.1*/
+#define TLS_SIGNATURE_ALGORITHM_ANONYMOUS   0
 #define TLS_SIGNATURE_ALGORITHM_RSA         1
+#define TLS_SIGNATURE_ALGORITHM_DSA         2
+#define TLS_SIGNATURE_ALGORITHM_ECDSA       3
+
 #define TLS_HASH_ALGORITHM_MD5              1
 #define TLS_HASH_ALGORITHM_SHA1             2
 #define TLS_HASH_ALGORITHM_SHA224           3
@@ -97,7 +105,7 @@
 /* The maximum size of an SSL2 message is 2^14 - 1, as neither of the first two
  * bits in the length field are usable. Per;
  * http://www-archive.mozilla.org/projects/security/pki/nss/ssl/draft02.html
- * section 1.1 
+ * section 1.1
  */
 #define S2N_SSL2_RECORD_HEADER_LENGTH   2
 #define S2N_SSL2_MAXIMUM_MESSAGE_LENGTH 16383
@@ -111,6 +119,13 @@
  */
 #define S2N_SMALL_RECORD_LENGTH (1500 - 20 - 20 - 20)
 #define S2N_SMALL_FRAGMENT_LENGTH (S2N_SMALL_RECORD_LENGTH - S2N_TLS_RECORD_HEADER_LENGTH)
+
+/* Testing in the wild has found 8k max record sizes give a good balance of low latency
+ * and throughput.
+ */
+#define S2N_DEFAULT_RECORD_LENGTH 8092
+#define S2N_DEFAULT_FRAGMENT_LENGTH (S2N_DEFAULT_RECORD_LENGTH - S2N_TLS_RECORD_HEADER_LENGTH)
+
 #define S2N_LARGE_RECORD_LENGTH S2N_TLS_MAXIMUM_RECORD_LENGTH
 #define S2N_LARGE_FRAGMENT_LENGTH S2N_TLS_MAXIMUM_FRAGMENT_LENGTH
 
